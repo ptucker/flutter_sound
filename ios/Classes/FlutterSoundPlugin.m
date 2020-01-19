@@ -4,7 +4,7 @@
 NSString* defaultExtensions [] =
 {
 	  @"sound.aac" 	// CODEC_DEFAULT
-	  @"sound.aac" 	// CODEC_AAC
+	, @"sound.aac" 	// CODEC_AAC
 	, @"sound.opus"	// CODEC_OPUS
 	, @"sound.caf"	// CODEC_CAF_OPUS
 	, @"sound.mp3"	// CODEC_MP3
@@ -20,7 +20,7 @@ AudioFormatID formats [] =
 	, kAudioFormatOpus		// CODEC_CAF_OPUS
 	, 0						// CODEC_MP3
 	, 0						// CODEC_OGG
-	, 0						// CODEC_PCM
+	, kAudioFormatLinearPCM  // CODEC_PCM
 };
 
 
@@ -54,24 +54,48 @@ NSString* GetDirectoryOfType_FlutterSound(NSSearchPathDirectory dir) {
   return [paths.firstObject stringByAppendingString:@"/"];
 }
 
-@implementation FlutterSoundPlugin{
+@implementation FlutterSoundPlugin  {
   NSURL *audioFileURL;
   AVAudioRecorder *audioRecorder;
   AVAudioPlayer *audioPlayer;
+    AVAudioEngine *audioEngine;
+    SFSpeechRecognizer *speechRecognizer;
+    SFSpeechAudioBufferRecognitionRequest *request;
+    SFSpeechRecognitionTask *recognitionTask;
+    unsigned long long lastRecog;
+    bool recogComplete;
+    NSString *transcript;
   NSTimer *timer;
   NSTimer *dbPeakTimer;
+    NSTimer *speechTimer;
 }
 double subscriptionDuration = 0.01;
 double dbPeakInterval = 0.8;
 bool shouldProcessDbLevel = false;
+int speechBus = 1;
+long msBeforeRecogComplete = 600;
 FlutterMethodChannel* _channel;
+
+- (id)init {
+    NSLog(@"flutter sound init");
+    NSError* err = nil;
+    [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
+                                     withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionMixWithOthers
+                                           error:&err];
+    if (err != nil)
+        NSLog([NSString stringWithFormat:@"error setting category: %@", [err localizedDescription]]);
+    [[AVAudioSession sharedInstance] setActive:true error:&err];
+    if (err != nil)
+        NSLog([NSString stringWithFormat:@"error activating: %@", [err localizedDescription]]);
+    return self;
+}
 
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
   NSLog(@"audioPlayerDidFinishPlaying");
-  NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
-  NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
+    NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
+    NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
 
-  NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}", [duration stringValue], [currentTime stringValue]];
+    NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}", [duration stringValue], [currentTime stringValue]];
   /*
   NSDictionary *status = @{
                            @"duration" : [duration stringValue],
@@ -95,7 +119,7 @@ FlutterMethodChannel* _channel;
   NSNumber *currentTime = [NSNumber numberWithDouble:audioRecorder.currentTime * 1000];
     [audioRecorder updateMeters];
 
-NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}", [currentTime stringValue]];
+  NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}", [currentTime stringValue]];
   /*
   NSDictionary *status = @{
                            @"current_position" : [currentTime stringValue],
@@ -107,16 +131,16 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 
 - (void)updateProgress:(NSTimer*) timer
 {
-  NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
-  NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
+    NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
+    NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
 
-  if ([duration intValue] == 0 && timer != nil) {
-    [self stopTimer];
-    return;
-  }
+    if ([duration intValue] == 0 && timer != nil) {
+      [self stopTimer];
+      return;
+    }
 
 
-  NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}", [duration stringValue], [currentTime stringValue]];
+    NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}", [duration stringValue], [currentTime stringValue]];
   /*
   NSDictionary *status = @{
                            @"duration" : [duration stringValue],
@@ -131,6 +155,11 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 {
       NSNumber *normalizedPeakLevel = [NSNumber numberWithDouble:MIN(pow(10.0, [audioRecorder peakPowerForChannel:0] / 20.0) * 160.0, 160.0)];
       [_channel invokeMethod:@"updateDbPeakProgress" arguments:normalizedPeakLevel];
+}
+
+- (void)onSpeech:(NSString*) text
+{
+    [_channel invokeMethod:@"onSpeech" arguments:text];
 }
 
 - (void)startRecorderTimer
@@ -240,11 +269,16 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
       BOOL enabled = [call.arguments[@"enabled"] boolValue];
       [self setDbLevelEnabled:enabled result:result];
   }
+  else if ([@"recordAndRecognizeSpeech" isEqualToString:call.method]) {
+      [self recordAndRecognizeSpeech: result];
+  }
+  else if ([@"stopRecognizeSpeech" isEqualToString:call.method]) {
+      [self stopRecognizeSpeech: result];
+  }
   else {
     result(FlutterMethodNotImplemented);
   }
 }
-
 
 - (void)isDecoderSupported:(t_CODEC)codec result: (FlutterResult)result {
   NSNumber*  b = [NSNumber numberWithBool: _isIosDecoderSupported[codec] ];
@@ -297,10 +331,6 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
                     forKey:AVEncoderBitRateKey];
     }
 
-  // Setup audio session
-  AVAudioSession *session = [AVAudioSession sharedInstance];
-  [session setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
-
   // set volume default to speaker
   UInt32 doChangeDefaultRoute = 1;
   AudioSessionSetProperty(kAudioSessionProperty_OverrideCategoryDefaultToSpeaker, sizeof(doChangeDefaultRoute), &doChangeDefaultRoute);
@@ -335,9 +365,6 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
   dbPeakTimer = nil;
   [self stopTimer];
     
-  AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-  [audioSession setActive:NO error:nil];
-
   NSString *filePath = audioFileURL.absoluteString;
   result(filePath);
 }
@@ -365,14 +392,14 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
         self->audioPlayer = [[AVAudioPlayer alloc] initWithData:data error:nil];
         self->audioPlayer.delegate = self;
 
-        // Able to play in silent mode
-        [[AVAudioSession sharedInstance]
-            setCategory: AVAudioSessionCategoryPlayback
-            error: nil];
-        // Able to play in background
-        [[AVAudioSession sharedInstance] setActive: YES error: nil];
-        [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
-
+//        // Able to play in silent mode
+//        [[AVAudioSession sharedInstance]
+//            setCategory: AVAudioSessionCategoryPlayback
+//            error: nil];
+//        // Able to play in background
+//        [[AVAudioSession sharedInstance] setActive: YES error: nil];
+//        [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+//
         [self->audioPlayer play];
         [self startTimer];
         NSString *filePath = self->audioFileURL.absoluteString;
@@ -386,10 +413,10 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
       audioPlayer.delegate = self;
     // }
 
-    // Able to play in silent mode
-    [[AVAudioSession sharedInstance]
-        setCategory: AVAudioSessionCategoryPlayback
-        error: nil];
+//    // Able to play in silent mode
+//    [[AVAudioSession sharedInstance]
+//        setCategory: AVAudioSessionCategoryPlayback
+//        error: nil];
 
     [audioPlayer play];
     [self startTimer];
@@ -403,8 +430,8 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 - (void)startPlayerFromBuffer:(FlutterStandardTypedData*)dataBuffer result: (FlutterResult)result {
   audioPlayer = [[AVAudioPlayer alloc] initWithData: [dataBuffer data] error: nil];
   audioPlayer.delegate = self;
-  [[AVAudioSession sharedInstance] setCategory: AVAudioSessionCategoryPlayback error: nil];
   [audioPlayer play];
+    
   [self startTimer];
   result(@"Playing from buffer");
 }
@@ -414,6 +441,7 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 
 
 - (void)stopPlayer:(FlutterResult)result {
+    NSLog(@"stopping player");
   if (audioPlayer) {
     if (timer != nil) {
         [timer invalidate];
@@ -431,14 +459,15 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 }
 
 - (void)pausePlayer:(FlutterResult)result {
-  if (audioPlayer && [audioPlayer isPlaying]) {
-    [audioPlayer pause];
-    if (timer != nil) {
-        [timer invalidate];
-        timer = nil;
+    if (audioPlayer && [audioPlayer isPlaying]) {
+        [audioPlayer pause];
+        if (timer != nil) {
+            [timer invalidate];
+            timer = nil;
+        }
+        result(@"pause play");
     }
-    result(@"pause play");
-  } else {
+  else {
     result([FlutterError
         errorWithCode:@"Audio Player"
         message:@"player is not set"
@@ -463,9 +492,6 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
     return;
   }
 
-  [[AVAudioSession sharedInstance]
-    setCategory: AVAudioSessionCategoryPlayback
-    error: nil];
   [audioPlayer play];
   [self startTimer];
   NSString *filePath = audioFileURL.absoluteString;
@@ -474,6 +500,7 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 
 - (void)seekToPlayer:(nonnull NSNumber*) time result: (FlutterResult)result {
   if (audioPlayer) {
+
       audioPlayer.currentTime = [time doubleValue] / 1000;
       [self updateProgress:nil];
       result([time stringValue]);
@@ -487,7 +514,7 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
 
 - (void)setVolume:(double) volume result: (FlutterResult)result {
     if (audioPlayer) {
-        [audioPlayer setVolume: volume];
+        [audioPlayer setVolume:volume];
         result(@"volume set");
     } else {
         result([FlutterError
@@ -497,4 +524,128 @@ NSString* status = [NSString stringWithFormat:@"{\"current_position\": \"%@\"}",
     }
 }
 
+- (void) isRecogDone: (NSTimer*) timer {
+    unsigned long long curr = [[NSDate date] timeIntervalSince1970] * 1000;
+    if (lastRecog > 0 && curr - lastRecog >= msBeforeRecogComplete) {
+        recogComplete = true;
+        lastRecog = 0;
+        [timer invalidate];
+        NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
+        [self onSpeech:transcript];
+        [self stopRecognizeSpeech:nil];
+        //[self recordAndRecognizeSpeech:nil];
+    }
+}
+
+- (void)recordAndRecognizeSpeech: (FlutterResult)result {
+    if (request != nil)
+        return; //we're already listening.
+    
+    transcript = [[NSString alloc] init];
+    lastRecog = 0;
+    recogComplete = false;
+    request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
+
+    if (audioEngine == nil)
+        audioEngine = [[AVAudioEngine alloc] init];
+
+    AVAudioInputNode* node = [audioEngine inputNode];
+    [node removeTapOnBus:speechBus];
+    AVAudioFormat* inputFormat = [node inputFormatForBus:speechBus];
+    AVAudioFormat* outputFormat = [node outputFormatForBus:speechBus];
+    AVAudioConverter* converter = [[AVAudioConverter alloc] initFromFormat:inputFormat toFormat:outputFormat];
+    [node installTapOnBus:speechBus bufferSize:1024 format:outputFormat block:^(AVAudioPCMBuffer *buf, AVAudioTime *when) {
+        if (self->recogComplete)
+            return;
+        
+        __block bool newBufferAvailable = true;
+        
+        AVAudioFrameCount frameCap = (outputFormat.sampleRate * buf.frameLength) / buf.format.sampleRate;
+        AVAudioPCMBuffer* convertedBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:outputFormat frameCapacity:frameCap];
+        NSError* err;
+        [converter convertToBuffer:convertedBuffer
+                             error:&err
+                withInputFromBlock:^(AVAudioPacketCount inNumPackets, AVAudioConverterInputStatus *outputStatus) {
+            if (self->recogComplete)
+                return (AVAudioBuffer*)nil;
+            
+            if (newBufferAvailable) {
+                *outputStatus = AVAudioConverterInputStatus_HaveData;
+                newBufferAvailable = false;
+                return (AVAudioBuffer*)buf;
+            } else {
+                *outputStatus = AVAudioConverterInputStatus_NoDataNow;
+                return (AVAudioBuffer*) nil;
+            }
+        }];
+        
+        [self->request appendAudioPCMBuffer:convertedBuffer];
+    }];
+    
+    if (![audioEngine isRunning]) {
+        NSLog(@"listener starting engine");
+        NSError* err;
+        [audioEngine prepare];
+        [audioEngine startAndReturnError:&err];
+        
+        if (err != nil)
+            NSLog([NSString stringWithFormat:@"engine start error: %@", [err localizedDescription]]);
+    }
+    NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
+
+    if (speechRecognizer == nil)
+        speechRecognizer = [[SFSpeechRecognizer alloc] init];
+    if (![speechRecognizer isAvailable]) {
+        NSLog(@"no recognizer available");
+        if (result != nil)
+          result([FlutterError errorWithCode:@"Audio Speech" message:@"no recognizer available" details:nil]);
+        return;
+    }
+
+    recognitionTask = [speechRecognizer recognitionTaskWithRequest:request resultHandler:^(SFSpeechRecognitionResult* recogResult,
+                                                                                           NSError* err) {
+        if (err != nil) {
+            //[self onSpeech:[err localizedDescription]];
+            NSLog([err localizedDescription]);
+        }
+        else if (!self->recogComplete) {
+            if ([recogResult.bestTranscription.formattedString length] > 0) {
+                self->transcript = recogResult.bestTranscription.formattedString;
+                self->lastRecog = [[NSDate date] timeIntervalSince1970] * 1000;
+                NSLog([NSString stringWithFormat:@"last recog: %llu", self->lastRecog]);
+            }
+        }
+    }];
+
+    if ([recognitionTask error] != nil) {
+        if (result != nil)
+          result([FlutterError errorWithCode:@"Error starting" message:[[recognitionTask error] localizedDescription] details:nil]);
+        return;
+    }
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self->timer = [NSTimer scheduledTimerWithTimeInterval: subscriptionDuration
+                                                       target:self
+                                                     selector:@selector(isRecogDone:)
+                                                     userInfo:nil
+                                                      repeats:YES];
+    });
+
+    if (result != nil)
+      result(@"recordAndRecognizeSpeech");
+}
+
+- (void)stopRecognizeSpeech: (FlutterResult)result {
+    [[audioEngine inputNode] removeTapOnBus:speechBus];
+    [request endAudio];
+    request = nil;
+    [recognitionTask finish];
+    recognitionTask = nil;
+    [audioEngine stop];
+    audioEngine = nil;
+    NSLog([NSString stringWithFormat:@"stop listener engine running: %d", [audioEngine isRunning]]);
+
+    if (result != nil)
+        result(transcript);
+}
 @end

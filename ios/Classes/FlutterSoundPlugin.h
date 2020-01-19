@@ -1,5 +1,6 @@
 #import <Flutter/Flutter.h>
 #import <AVFoundation/AVFoundation.h>
+#import <Speech/Speech.h>
 
 // this enum MUST be synchronized with lib/flutter_sound.dart and fluttersound/AudioInterface.java
 typedef enum
@@ -13,9 +14,9 @@ typedef enum
      , CODEC_PCM
 } t_CODEC;
 
+API_AVAILABLE(ios(10.0))
 @interface FlutterSoundPlugin : NSObject<FlutterPlugin, AVAudioPlayerDelegate>
-- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player
-        successfully:(BOOL)flag;
+- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag;
 - (void)updateProgress:(NSTimer*) timer;
 - (void)startTimer;
 @end

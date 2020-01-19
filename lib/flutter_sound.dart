@@ -35,10 +35,12 @@ class FlutterSound {
   static StreamController<RecordStatus> _recorderController;
   static StreamController<double> _dbPeakController;
   static StreamController<PlayStatus> _playerController;
+  static StreamController<String> _onSpeechController;
   /// Value ranges from 0 to 120
   Stream<double> get onRecorderDbPeakChanged => _dbPeakController.stream;
   Stream<RecordStatus> get onRecorderStateChanged => _recorderController.stream;
   Stream<PlayStatus> get onPlayerStateChanged => _playerController.stream;
+  Stream<String> get onSpeech => _onSpeechController.stream;
   @Deprecated('Prefer to use audio_state variable')
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
@@ -66,6 +68,24 @@ class FlutterSound {
       'sec': sec,
     });
     return result;
+  }
+
+  Future<void> _setSpeechCallback() async {
+    if (_onSpeechController == null) {
+      _onSpeechController = new StreamController.broadcast();
+    }
+    _channel.setMethodCallHandler((MethodCall call) {
+      switch (call.method) {
+        case "onSpeech":
+          String result = call.arguments;
+          if (_onSpeechController != null)
+            _onSpeechController.add(result);
+          break;
+        default:
+          throw new ArgumentError('Unknown method ${call.method} ');
+      }
+      return null;
+    });
   }
 
   Future<void> _setRecorderCallback() async {
@@ -122,6 +142,15 @@ class FlutterSound {
       }
       return null;
     });
+  }
+
+  Future<void> _removeSpeechCallback() async {
+    if (_onSpeechController != null) {
+      _onSpeechController
+        ..add(null)
+        ..close();
+        _onSpeechController = null;
+    }
   }
 
   Future<void> _removeRecorderCallback() async {
@@ -208,7 +237,7 @@ class FlutterSound {
       // throw PlayerRunningException('Player is already playing.');
     }
     if (_audio_state != t_AUDIO_STATE.IS_STOPPED) {
-            throw PlayerRunningException('Player is not stopped.');
+      throw PlayerRunningException('Player is not stopped.');
     }
 
     try {
@@ -322,6 +351,18 @@ class FlutterSound {
       .invokeMethod('setDbLevelEnabled', <String, dynamic>{
     'enabled': enabled,
     });
+    return result;
+  }
+
+  Future<String> recordAndRecognizeSpeech() async {
+    _setSpeechCallback();
+    String result = await _channel.invokeMethod('recordAndRecognizeSpeech');
+    return result;
+  }
+
+  Future<String> stopRecognizeSpeech() async {
+    _removeSpeechCallback();
+    String result = await _channel.invokeMethod('stopRecognizeSpeech');
     return result;
   }
 }
