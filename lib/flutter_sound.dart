@@ -3,6 +3,7 @@ import 'dart:core';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data' show Uint8List;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/android_encoder.dart';
 import 'package:flutter_sound/ios_quality.dart';
@@ -22,10 +23,10 @@ enum t_CODEC
 
 enum t_AUDIO_STATE
 {
-        IS_STOPPED,
-        IS_PAUSED,
-        IS_PLAYING,
-        IS_RECORDING,
+  IS_STOPPED,
+  IS_PAUSED,
+  IS_PLAYING,
+  IS_RECORDING,
 }
 
 
@@ -40,10 +41,11 @@ class FlutterSound {
   Stream<double> get onRecorderDbPeakChanged => _dbPeakController.stream;
   Stream<RecordStatus> get onRecorderStateChanged => _recorderController.stream;
   Stream<PlayStatus> get onPlayerStateChanged => _playerController.stream;
-  Stream<String> get onSpeech => _onSpeechController.stream;
+  Stream<String> get onSpeech => (_onSpeechController != null) ? _onSpeechController.stream : null;
   @Deprecated('Prefer to use audio_state variable')
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
+  bool _speechPermissions = false;
   t_AUDIO_STATE get audioState => _audio_state;
 
   bool _isRecording() => _audio_state == t_AUDIO_STATE.IS_RECORDING ;
@@ -51,23 +53,26 @@ class FlutterSound {
   bool _isPlaying() => _audio_state == t_AUDIO_STATE.IS_PLAYING || _audio_state == t_AUDIO_STATE.IS_PAUSED;
 
   Future<bool> isEncoderSupported(t_CODEC codec) async {
-      bool result =
+      var result =
           await _channel.invokeMethod('isEncoderSupported', <String, dynamic> { 'codec': codec.index } );
-      return result;
+      return result is bool ? result : false;
   }
 
   Future<bool>  isDecoderSupported(t_CODEC codec) async {
-    bool result =
+    var result =
         await _channel.invokeMethod('isDecoderSupported', <String, dynamic> { 'codec': codec.index } );
-    return result;
+    return result is bool ? result : false;
   }
 
   Future<String> setSubscriptionDuration(double sec) async {
-    String result = await _channel
+    var result = await _channel
         .invokeMethod('setSubscriptionDuration', <String, dynamic>{
       'sec': sec,
     });
-    return result;
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
   Future<void> _setSpeechCallback() async {
@@ -195,7 +200,7 @@ class FlutterSound {
     if (! await isEncoderSupported(codec))
       throw new RecorderRunningException('Codec not supported.');
     try {
-      String result =
+      var result =
       await _channel.invokeMethod('startRecorder', <String, dynamic>{
         'path': uri,
         'sampleRate': sampleRate,
@@ -209,7 +214,10 @@ class FlutterSound {
       });
       _setRecorderCallback();
         _audio_state = t_AUDIO_STATE.IS_RECORDING;
-      return result;
+      if (result is FlutterError)
+        return Future.value(result.toString());
+      else
+        return result;
     } catch (err) {
       throw new Exception(err);
     }
@@ -220,12 +228,16 @@ class FlutterSound {
       throw new RecorderStoppedException('Recorder is not recording.');
     }
 
-    String result = await _channel.invokeMethod('stopRecorder');
+    var result = await _channel.invokeMethod('stopRecorder');
 
     _audio_state = t_AUDIO_STATE.IS_STOPPED;
     _removeRecorderCallback();
     _removeDbPeakCallback();
-    return result;
+
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
 
@@ -241,7 +253,7 @@ class FlutterSound {
     }
 
     try {
-      String result =
+      var result =
       await _channel.invokeMethod(method, what);
 
       if (result != null)
@@ -251,16 +263,30 @@ class FlutterSound {
         _audio_state = t_AUDIO_STATE.IS_PLAYING;
       }
 
-      return result;
+      if (result is FlutterError)
+        return Future.value(result.toString());
+      else
+        return result;
     } catch (err) {
       throw Exception(err);
     }
   }
 
 
-  Future<String> startPlayer(String uri) async => _startPlayer('startPlayer', {'path': uri});
-  Future<String> startPlayerFromBuffer(Uint8List dataBuffer) async => _startPlayer('startPlayerFromBuffer', {'dataBuffer': dataBuffer});
-
+  Future<String> startPlayer(String uri) async {
+    var result = _startPlayer('startPlayer', {'path': uri});
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
+  }
+  Future<String> startPlayerFromBuffer(Uint8List dataBuffer) async {
+    var result = _startPlayer('startPlayerFromBuffer', {'dataBuffer': dataBuffer});
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
+  }
 
   Future<String> stopPlayer() async {
 
@@ -270,21 +296,27 @@ class FlutterSound {
 
     _audio_state = t_AUDIO_STATE.IS_STOPPED;
 
-    String result = await _channel.invokeMethod('stopPlayer');
+    var result = await _channel.invokeMethod('stopPlayer');
     _removePlayerCallback();
-    return result;
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
   Future<String> pausePlayer() async {
-  if (_audio_state != t_AUDIO_STATE.IS_PLAYING ) {
-          throw PlayerRunningException('Player is not playing.');
-  }
+    if (_audio_state != t_AUDIO_STATE.IS_PLAYING ) {
+            throw PlayerRunningException('Player is not playing.');
+    }
 
-          try {
-      String result = await _channel.invokeMethod('pausePlayer');
+    try {
+      var result = await _channel.invokeMethod('pausePlayer');
       if (result != null)
               _audio_state = t_AUDIO_STATE.IS_PAUSED;
-      return result;
+      if (result is FlutterError)
+        return Future.value(result.toString());
+      else
+        return result;
     } catch (err) {
       print('err: $err');
       _audio_state = t_AUDIO_STATE.IS_STOPPED; // In fact _audio_state is in an unknown state
@@ -298,10 +330,13 @@ class FlutterSound {
     }
 
     try {
-      String result = await _channel.invokeMethod('resumePlayer');
+      var result = await _channel.invokeMethod('resumePlayer');
       if (result != null)
               _audio_state = t_AUDIO_STATE.IS_PLAYING;
-      return result;
+      if (result is FlutterError)
+        return Future.value(result.toString());
+      else
+        return result;
     } catch (err) {
       print('err: $err');
       return err;
@@ -310,11 +345,14 @@ class FlutterSound {
 
   Future<String> seekToPlayer(int milliSecs) async {
     try {
-      String result =
+      var result =
           await _channel.invokeMethod('seekToPlayer', <String, dynamic>{
         'sec': milliSecs,
       });
-      return result;
+      if (result is FlutterError)
+        return Future.value(result.toString());
+      else
+        return result;
     } catch (err) {
       print('err: $err');
       return err;
@@ -323,7 +361,7 @@ class FlutterSound {
 
   Future<String> setVolume(double volume) async {
     double indexedVolume = Platform.isIOS ? volume * 100 : volume;
-    String result = '';
+    var result;
     if (volume < 0.0 || volume > 1.0) {
       result = 'Value of volume should be between 0.0 and 1.0.';
       return result;
@@ -332,38 +370,62 @@ class FlutterSound {
     result = await _channel.invokeMethod('setVolume', <String, dynamic>{
       'volume': indexedVolume,
     });
-    return result;
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
   /// Defines the interval at which the peak level should be updated.
   /// Default is 0.8 seconds
   Future<String> setDbPeakLevelUpdate(double intervalInSecs) async {
-    String result = await _channel
+    var result = await _channel
       .invokeMethod('setDbPeakLevelUpdate', <String, dynamic>{
     'intervalInSecs': intervalInSecs,
     });
-    return result;
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
   /// Enables or disables processing the Peak level in db's. Default is disabled
   Future<String> setDbLevelEnabled(bool enabled) async {
-    String result = await _channel
+    var result = await _channel
       .invokeMethod('setDbLevelEnabled', <String, dynamic>{
     'enabled': enabled,
     });
-    return result;
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 
   Future<String> recordAndRecognizeSpeech() async {
-    _setSpeechCallback();
-    String result = await _channel.invokeMethod('recordAndRecognizeSpeech');
-    return result;
+    if (!_speechPermissions) {
+      //need to check permissions before we listen
+      return _channel.invokeMethod('requestSpeechRecognitionPermission').then((b) {
+        if (b) {
+          _setSpeechCallback();
+          return _channel.invokeMethod('recordAndRecognizeSpeech');
+        }
+        else
+          return Future.value('error: permission for speech not granted');
+      });
+    }
+    else {
+      _setSpeechCallback();
+      return _channel.invokeMethod('recordAndRecognizeSpeech');
+    }
   }
 
   Future<String> stopRecognizeSpeech() async {
     _removeSpeechCallback();
-    String result = await _channel.invokeMethod('stopRecognizeSpeech');
-    return result;
+    var result = await _channel.invokeMethod('stopRecognizeSpeech');
+    if (result is FlutterError)
+      return Future.value(result.toString());
+    else
+      return result;
   }
 }
 

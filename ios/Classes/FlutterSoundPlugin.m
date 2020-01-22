@@ -75,18 +75,28 @@ bool shouldProcessDbLevel = false;
 int speechBus = 1;
 long msBeforeRecogComplete = 600;
 FlutterMethodChannel* _channel;
+NSError* _lastError;
+NSString* _lastErrorCall;
 
 - (id)init {
     NSLog(@"flutter sound init");
     NSError* err = nil;
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
-                                     withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionMixWithOthers
+                                     withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker |
+                                                    AVAudioSessionCategoryOptionMixWithOthers |
+                                                    AVAudioSessionCategoryOptionAllowBluetooth
                                            error:&err];
-    if (err != nil)
+    if (err != nil) {
         NSLog([NSString stringWithFormat:@"error setting category: %@", [err localizedDescription]]);
+        _lastError = err;
+        _lastErrorCall = @"init -- set category";
+    }
     [[AVAudioSession sharedInstance] setActive:true error:&err];
-    if (err != nil)
+    if (err != nil) {
         NSLog([NSString stringWithFormat:@"error activating: %@", [err localizedDescription]]);
+        _lastError = err;
+        _lastErrorCall = @"init -- set active";
+    }
     return self;
 }
 
@@ -95,7 +105,10 @@ FlutterMethodChannel* _channel;
     NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
     NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
 
-    NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}", [duration stringValue], [currentTime stringValue]];
+    NSString* status = [NSString stringWithFormat:@"{\"duration\": \"%@\", \"current_position\": \"%@\"}",
+                            [duration stringValue],
+                            [currentTime stringValue]
+                        ];
   /*
   NSDictionary *status = @{
                            @"duration" : [duration stringValue],
@@ -205,6 +218,16 @@ FlutterMethodChannel* _channel;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
+    //if an error occurred in a previous call, return it now
+    if (_lastError != nil) {
+        result([FlutterError errorWithCode:_lastErrorCall
+                                   message:[_lastError localizedDescription]
+                                   details:nil
+                ]);
+        _lastError = nil;
+        return;
+    }
+    
   if ([@"startRecorder" isEqualToString:call.method]) {
     NSString* path = (NSString*)call.arguments[@"path"];
     NSNumber* sampleRateArgs = (NSNumber*)call.arguments[@"sampleRate"];
@@ -216,7 +239,7 @@ FlutterMethodChannel* _channel;
     t_CODEC coder = CODEC_AAC;
     if (![codec isKindOfClass:[NSNull class]])
     {
-            coder = [codec intValue];
+        coder = [codec intValue];
     }
 
     float sampleRate = 44100;
@@ -226,7 +249,7 @@ FlutterMethodChannel* _channel;
 
     int numChannels = 2;
     if (![numChannelsArgs isKindOfClass:[NSNull class]]) {
-      numChannels = [numChannelsArgs integerValue];
+      numChannels = (int) [numChannelsArgs integerValue];
     }
 
     [self startRecorder:path:[NSNumber numberWithInt:numChannels]:[NSNumber numberWithInt:sampleRate]:coder:iosQuality:bitRate result:result];
@@ -268,6 +291,9 @@ FlutterMethodChannel* _channel;
   else if ([@"setDbLevelEnabled" isEqualToString:call.method]) {
       BOOL enabled = [call.arguments[@"enabled"] boolValue];
       [self setDbLevelEnabled:enabled result:result];
+  }
+  else if ([@"requestSpeechRecognitionPermission" isEqualToString:call.method]) {
+      [self requestSpeechRecognitionPermission: result];
   }
   else if ([@"recordAndRecognizeSpeech" isEqualToString:call.method]) {
       [self recordAndRecognizeSpeech: result];
@@ -331,18 +357,15 @@ FlutterMethodChannel* _channel;
                     forKey:AVEncoderBitRateKey];
     }
 
-  // set volume default to speaker
-  UInt32 doChangeDefaultRoute = 1;
-  AudioSessionSetProperty(kAudioSessionProperty_OverrideCategoryDefaultToSpeaker, sizeof(doChangeDefaultRoute), &doChangeDefaultRoute);
-  
-  // set up for bluetooth microphone input
-  UInt32 allowBluetoothInput = 1;
-  AudioSessionSetProperty (kAudioSessionProperty_OverrideCategoryEnableBluetoothInput,sizeof (allowBluetoothInput),&allowBluetoothInput);
- 
+    NSError *err;
   audioRecorder = [[AVAudioRecorder alloc]
                         initWithURL:audioFileURL
                         settings:audioSettings
-                        error:nil];
+                        error:&err];
+    if (err != nil) {
+        result([FlutterError errorWithCode:@"start recorder" message:[err localizedDescription] details:nil]);
+        return;
+    }
 
   [audioRecorder setDelegate:self];
   [audioRecorder record];
@@ -388,18 +411,17 @@ FlutterMethodChannel* _channel;
         dataTaskWithURL:audioFileURL completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             // NSData *data = [NSData dataWithContentsOfURL:audioFileURL];
             
+        NSError* err;
         // We must create a new Audio Player instance to be able to play a different Url
-        self->audioPlayer = [[AVAudioPlayer alloc] initWithData:data error:nil];
+        self->audioPlayer = [[AVAudioPlayer alloc] initWithData:data error:&err];
+        if (err != nil) {
+            result([FlutterError errorWithCode:@"startPlayer in download task audioplayer init"
+                                       message:[err localizedDescription]
+                                       details:nil]);
+            return;
+        }
         self->audioPlayer.delegate = self;
 
-//        // Able to play in silent mode
-//        [[AVAudioSession sharedInstance]
-//            setCategory: AVAudioSessionCategoryPlayback
-//            error: nil];
-//        // Able to play in background
-//        [[AVAudioSession sharedInstance] setActive: YES error: nil];
-//        [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
-//
         [self->audioPlayer play];
         [self startTimer];
         NSString *filePath = self->audioFileURL.absoluteString;
@@ -408,15 +430,15 @@ FlutterMethodChannel* _channel;
 
     [downloadTask resume];
   } else {
-    // if (!audioPlayer) { // Fix sound distoring when playing recorded audio again.
-      audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:audioFileURL error:nil];
+      NSError* err;
+      audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:audioFileURL error:&err];
+      if (err != nil) {
+          result([FlutterError errorWithCode:@"startPlayer audioplayer init"
+                                     message:[err localizedDescription]
+                                     details:nil]);
+          return;
+      }
       audioPlayer.delegate = self;
-    // }
-
-//    // Able to play in silent mode
-//    [[AVAudioSession sharedInstance]
-//        setCategory: AVAudioSessionCategoryPlayback
-//        error: nil];
 
     [audioPlayer play];
     [self startTimer];
@@ -426,19 +448,21 @@ FlutterMethodChannel* _channel;
   }
 }
 
-
 - (void)startPlayerFromBuffer:(FlutterStandardTypedData*)dataBuffer result: (FlutterResult)result {
-  audioPlayer = [[AVAudioPlayer alloc] initWithData: [dataBuffer data] error: nil];
+    NSError* err;
+  audioPlayer = [[AVAudioPlayer alloc] initWithData: [dataBuffer data] error: &err];
+  if (err != nil) {
+      result([FlutterError errorWithCode:@"startPlayerFromBuffer audioplayer init"
+                                 message:[err localizedDescription]
+                                 details:nil]);
+      return;
+  }
   audioPlayer.delegate = self;
   [audioPlayer play];
     
   [self startTimer];
   result(@"Playing from buffer");
 }
-
-
-
-
 
 - (void)stopPlayer:(FlutterResult)result {
     NSLog(@"stopping player");
@@ -524,13 +548,24 @@ FlutterMethodChannel* _channel;
     }
 }
 
+- (void) requestSpeechRecognitionPermission: (FlutterResult)result {
+    if (SFSpeechRecognizer.authorizationStatus == SFSpeechRecognizerAuthorizationStatusAuthorized) {
+        result([NSNumber numberWithBool:true]);
+    }
+    else {
+        [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
+            result([NSNumber numberWithBool:status == SFSpeechRecognizerAuthorizationStatusAuthorized]);
+        }];
+    }
+}
+
 - (void) isRecogDone: (NSTimer*) timer {
     unsigned long long curr = [[NSDate date] timeIntervalSince1970] * 1000;
     if (lastRecog > 0 && curr - lastRecog >= msBeforeRecogComplete) {
         recogComplete = true;
         lastRecog = 0;
         [timer invalidate];
-        NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
+        //NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
         [self onSpeech:transcript];
         [self stopRecognizeSpeech:nil];
         //[self recordAndRecognizeSpeech:nil];
@@ -538,8 +573,11 @@ FlutterMethodChannel* _channel;
 }
 
 - (void)recordAndRecognizeSpeech: (FlutterResult)result {
-    if (request != nil)
+    if (request != nil) {
+        if (result != nil)
+            result(@"Already listening");
         return; //we're already listening.
+    }
     
     transcript = [[NSString alloc] init];
     lastRecog = 0;
@@ -588,10 +626,17 @@ FlutterMethodChannel* _channel;
         [audioEngine prepare];
         [audioEngine startAndReturnError:&err];
         
-        if (err != nil)
-            NSLog([NSString stringWithFormat:@"engine start error: %@", [err localizedDescription]]);
+        if (err != nil) {
+            //NSLog([NSString stringWithFormat:@"engine start error: %@", [err localizedDescription]]);
+            if (result != nil) {
+                result([FlutterError errorWithCode:@"recordAndRecognizeSpeech - audioEngine start"
+                                           message:[err localizedDescription]
+                                           details:nil]);
+                return;
+            }
+        }
     }
-    NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
+    //NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
 
     if (speechRecognizer == nil)
         speechRecognizer = [[SFSpeechRecognizer alloc] init];
@@ -602,17 +647,18 @@ FlutterMethodChannel* _channel;
         return;
     }
 
-    recognitionTask = [speechRecognizer recognitionTaskWithRequest:request resultHandler:^(SFSpeechRecognitionResult* recogResult,
-                                                                                           NSError* err) {
+    recognitionTask = [speechRecognizer recognitionTaskWithRequest:request
+                                                     resultHandler:^(SFSpeechRecognitionResult* recogResult, NSError* err) {
         if (err != nil) {
-            //[self onSpeech:[err localizedDescription]];
             NSLog([err localizedDescription]);
+//            _lastErrorCall = @"recognition result";
+//            _lastError = err;
         }
         else if (!self->recogComplete) {
             if ([recogResult.bestTranscription.formattedString length] > 0) {
                 self->transcript = recogResult.bestTranscription.formattedString;
                 self->lastRecog = [[NSDate date] timeIntervalSince1970] * 1000;
-                NSLog([NSString stringWithFormat:@"last recog: %llu", self->lastRecog]);
+                //NSLog([NSString stringWithFormat:@"last recog: %llu", self->lastRecog]);
             }
         }
     }];
@@ -632,7 +678,7 @@ FlutterMethodChannel* _channel;
     });
 
     if (result != nil)
-      result(@"recordAndRecognizeSpeech");
+      result(@"recordAndRecognizeSpeech successful");
 }
 
 - (void)stopRecognizeSpeech: (FlutterResult)result {
