@@ -62,7 +62,7 @@ NSString* GetDirectoryOfType_FlutterSound(NSSearchPathDirectory dir) {
     SFSpeechRecognizer *speechRecognizer;
     SFSpeechAudioBufferRecognitionRequest *request;
     SFSpeechRecognitionTask *recognitionTask;
-    unsigned long long lastRecog;
+    double lastRecog;
     bool recogComplete;
     NSString *transcript;
   NSTimer *timer;
@@ -73,7 +73,7 @@ double subscriptionDuration = 0.01;
 double dbPeakInterval = 0.8;
 bool shouldProcessDbLevel = false;
 int speechBus = 1;
-long msBeforeRecogComplete = 600;
+double msBeforeRecogComplete = 0.8;
 FlutterMethodChannel* _channel;
 NSError* _lastError;
 NSString* _lastErrorCall;
@@ -560,15 +560,15 @@ NSString* _lastErrorCall;
 }
 
 - (void) isRecogDone: (NSTimer*) timer {
-    unsigned long long curr = [[NSDate date] timeIntervalSince1970] * 1000;
+    double curr = [[NSDate date] timeIntervalSince1970];
     if (lastRecog > 0 && curr - lastRecog >= msBeforeRecogComplete) {
         recogComplete = true;
         lastRecog = 0;
         [timer invalidate];
-        //NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
+//        NSLog([NSString stringWithFormat:@"complete: %f", curr]);
+        NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
         [self onSpeech:transcript];
         [self stopRecognizeSpeech:nil];
-        //[self recordAndRecognizeSpeech:nil];
     }
 }
 
@@ -656,9 +656,10 @@ NSString* _lastErrorCall;
         }
         else if (!self->recogComplete) {
             if ([recogResult.bestTranscription.formattedString length] > 0) {
+                self->lastRecog = [[NSDate date] timeIntervalSince1970];
+//                NSLog([NSString stringWithFormat:@"last recog (result): %f", self->lastRecog]);
                 self->transcript = recogResult.bestTranscription.formattedString;
-                self->lastRecog = [[NSDate date] timeIntervalSince1970] * 1000;
-                //NSLog([NSString stringWithFormat:@"last recog: %llu", self->lastRecog]);
+                NSLog(self->transcript);
             }
         }
     }];
