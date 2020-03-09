@@ -592,33 +592,44 @@ NSString* _lastErrorCall;
     AVAudioFormat* inputFormat = [node inputFormatForBus:speechBus];
     AVAudioFormat* outputFormat = [node outputFormatForBus:speechBus];
     AVAudioConverter* converter = [[AVAudioConverter alloc] initFromFormat:inputFormat toFormat:outputFormat];
-    [node installTapOnBus:speechBus bufferSize:1024 format:outputFormat block:^(AVAudioPCMBuffer *buf, AVAudioTime *when) {
-        if (self->recogComplete)
-            return;
-        
-        __block bool newBufferAvailable = true;
-        
-        AVAudioFrameCount frameCap = (outputFormat.sampleRate * buf.frameLength) / buf.format.sampleRate;
-        AVAudioPCMBuffer* convertedBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:outputFormat frameCapacity:frameCap];
-        NSError* err;
-        [converter convertToBuffer:convertedBuffer
-                             error:&err
-                withInputFromBlock:^(AVAudioPacketCount inNumPackets, AVAudioConverterInputStatus *outputStatus) {
+    @try {
+        [node installTapOnBus:speechBus bufferSize:1024 format:outputFormat block:^(AVAudioPCMBuffer *buf, AVAudioTime *when) {
             if (self->recogComplete)
-                return (AVAudioBuffer*)nil;
+                return;
             
-            if (newBufferAvailable) {
-                *outputStatus = AVAudioConverterInputStatus_HaveData;
-                newBufferAvailable = false;
-                return (AVAudioBuffer*)buf;
-            } else {
-                *outputStatus = AVAudioConverterInputStatus_NoDataNow;
-                return (AVAudioBuffer*) nil;
-            }
+            __block bool newBufferAvailable = true;
+            
+            AVAudioFrameCount frameCap = (outputFormat.sampleRate * buf.frameLength) / buf.format.sampleRate;
+            AVAudioPCMBuffer* convertedBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:outputFormat frameCapacity:frameCap];
+            NSError* err;
+            [converter convertToBuffer:convertedBuffer
+                                 error:&err
+                    withInputFromBlock:^(AVAudioPacketCount inNumPackets, AVAudioConverterInputStatus *outputStatus) {
+                if (self->recogComplete)
+                    return (AVAudioBuffer*)nil;
+                
+                if (newBufferAvailable) {
+                    *outputStatus = AVAudioConverterInputStatus_HaveData;
+                    newBufferAvailable = false;
+                    return (AVAudioBuffer*)buf;
+                } else {
+                    *outputStatus = AVAudioConverterInputStatus_NoDataNow;
+                    return (AVAudioBuffer*) nil;
+                }
+            }];
+            
+            [self->request appendAudioPCMBuffer:convertedBuffer];
         }];
-        
-        [self->request appendAudioPCMBuffer:convertedBuffer];
-    }];
+    }
+    @catch (NSException* e) {
+        NSString* msg = [NSString stringWithFormat:@"%@: %@", [e name], [e reason]];
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Speech Failed"
+                                                        message:msg
+                                                       delegate:self
+                                              cancelButtonTitle:@"OK"
+                                              otherButtonTitles:nil];
+        [alert show];
+    }
     
     if (![audioEngine isRunning]) {
         NSLog(@"listener starting engine");
@@ -680,6 +691,10 @@ NSString* _lastErrorCall;
 
     if (result != nil)
       result(@"recordAndRecognizeSpeech successful");
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex{
+    //We're not doing anything in response to the alert
 }
 
 - (void)stopRecognizeSpeech: (FlutterResult)result {
