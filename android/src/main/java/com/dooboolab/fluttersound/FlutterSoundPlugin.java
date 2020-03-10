@@ -4,11 +4,16 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Log;
 import android.app.Activity;
+import android.content.Intent;
 import androidx.core.app.ActivityCompat;
 import java.io.*;
 
@@ -16,6 +21,8 @@ import io.flutter.util.PathUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
@@ -52,10 +59,12 @@ class sdkCompat {
 // *****************
 
 /** FlutterSoundPlugin */
-public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, AudioInterface{
+public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, AudioInterface, RecognitionListener {
   final static String TAG = "FlutterSoundPlugin";
   final static String RECORD_STREAM = "com.dooboolab.fluttersound/record";
   final static String PLAY_STREAM= "com.dooboolab.fluttersound/play";
+
+  private static final String LOG_TAG = "FlutterSoundPlugin";
 
   private static final String ERR_UNKNOWN = "ERR_UNKNOWN";
   private static final String ERR_PLAYER_IS_NULL = "ERR_PLAYER_IS_NULL";
@@ -69,6 +78,12 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   final private AudioModel model = new AudioModel();
   private Timer mTimer = new Timer();
   final private Handler recordHandler = new Handler();
+  private SpeechRecognizer speech;
+  private MethodChannel speechChannel;
+  String transcription = "";
+  private Intent recognizerIntent;
+  private Activity activity;
+
   //mainThread handler
   final private Handler mainHandler = new Handler();
   final private Handler dbPeakLevelHandler = new Handler();
@@ -140,9 +155,24 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     /** Plugin registration. */
   public static void registerWith(Registrar registrar) {
     channel = new MethodChannel(registrar.messenger(), "flutter_sound");
-    channel.setMethodCallHandler(new FlutterSoundPlugin());
+    channel.setMethodCallHandler(new FlutterSoundPlugin(registrar.activity(), channel));
     reg = registrar;
   }
+
+  FlutterSoundPlugin(Activity activity, MethodChannel channel) {
+    speech = SpeechRecognizer.createSpeechRecognizer(activity.getApplicationContext());
+    speech.setRecognitionListener(this);
+
+    this.activity = activity;
+    this.speechChannel = channel;
+    this.speechChannel.setMethodCallHandler(this);
+
+    recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+}
 
   @Override
   public void onMethodCall(final MethodCall call, final Result result) {
@@ -223,6 +253,15 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         if (call.argument("sec") == null) return;
         double duration = call.argument("sec");
         this.setSubscriptionDuration(duration, result);
+        break;
+      case "requestSpeechRecognitionPermission":
+        this.requestSpeechRecognitionPermission(result);
+        break;
+      case "recordAndRecognizeSpeech":
+        this.recordAndRecognizeSpeech(result);
+        break;
+      case "stopRecognizeSpeech":
+        this.stopRecognizeSpeech(result);
         break;
       default:
         result.notImplemented();
@@ -595,5 +634,93 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void setSubscriptionDuration(double sec, Result result) {
     this.model.subsDurationMillis = (int) (sec * 1000);
     result.success("setSubscriptionDuration: " + this.model.subsDurationMillis);
+  }
+
+  @Override
+  public void requestSpeechRecognitionPermission(MethodChannel.Result result) {
+    result.success(true);
+    Locale locale = activity.getResources().getConfiguration().locale;
+    Log.d(LOG_TAG, "Current Locale : " + locale.toString());
+  }
+
+  @Override
+  public void recordAndRecognizeSpeech(MethodChannel.Result result) {
+    // recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, getLocale(call.arguments.toString()));
+    speech.startListening(recognizerIntent);
+    result.success("recordAndRecognizeSpeech successful");
+}
+
+  @Override
+  public void stopRecognizeSpeech(MethodChannel.Result result) {
+    speech.stopListening();
+    result.success(transcription);
+  }
+
+  @Override
+  public void onReadyForSpeech(Bundle params) {
+      Log.d(LOG_TAG, "onReadyForSpeech");
+      speechChannel.invokeMethod("speech.onSpeechAvailability", true);
+  }
+
+  @Override
+  public void onBeginningOfSpeech() {
+      Log.d(LOG_TAG, "onRecognitionStarted");
+      transcription = "";
+
+      speechChannel.invokeMethod("speech.onRecognitionStarted", null);
+  }
+
+  @Override
+  public void onRmsChanged(float rmsdB) {
+      Log.d(LOG_TAG, "onRmsChanged : " + rmsdB);
+  }
+
+  @Override
+  public void onBufferReceived(byte[] buffer) {
+      Log.d(LOG_TAG, "onBufferReceived");
+  }
+
+  @Override
+  public void onEndOfSpeech() {
+      Log.d(LOG_TAG, "onEndOfSpeech");
+      speechChannel.invokeMethod("speech.onRecognitionComplete", transcription);
+  }
+
+  @Override
+  public void onError(int error) {
+      Log.d(LOG_TAG, "onError : " + error);
+      speechChannel.invokeMethod("speech.onSpeechAvailability", false);
+      speechChannel.invokeMethod("speech.onError", error);
+  }
+
+  @Override
+  public void onPartialResults(Bundle partialResults) {
+      Log.d(LOG_TAG, "onPartialResults...");
+      ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+      transcription = matches.get(0);
+      Log.d(LOG_TAG, "onPartialResults -> " + transcription);
+      sendTranscription(false);
+
+  }
+
+  @Override
+  public void onEvent(int eventType, Bundle params) {
+      Log.d(LOG_TAG, "onEvent : " + eventType);
+  }
+
+  @Override
+  public void onResults(Bundle results) {
+      Log.d(LOG_TAG, "onResults...");
+      ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+      String text = "";
+      transcription = matches.get(0);
+      Log.d(LOG_TAG, "onResults -> " + transcription);
+      sendTranscription(true);
+  }
+
+  private void sendTranscription(boolean isFinal) {
+      String method = isFinal ? "speech.onRecognitionComplete" : "speech.onSpeech";
+      Log.d(LOG_TAG, "invoke " + method + "(" + transcription + ")");
+      speechChannel.invokeMethod(method, transcription);
   }
 }
