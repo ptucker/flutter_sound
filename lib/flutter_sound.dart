@@ -37,11 +37,13 @@ class FlutterSound {
   static StreamController<double> _dbPeakController;
   static StreamController<PlayStatus> _playerController;
   static StreamController<String> _onSpeechController;
+  static StreamController<int> _onSpeechErrorController;
   /// Value ranges from 0 to 120
   Stream<double> get onRecorderDbPeakChanged => _dbPeakController.stream;
   Stream<RecordStatus> get onRecorderStateChanged => _recorderController.stream;
   Stream<PlayStatus> get onPlayerStateChanged => _playerController.stream;
   Stream<String> get onSpeech => (_onSpeechController != null) ? _onSpeechController.stream : null;
+  Stream<int> get onSpeechError => (_onSpeechErrorController != null) ? _onSpeechErrorController.stream : null;
   @Deprecated('Prefer to use audio_state variable')
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
@@ -58,7 +60,7 @@ class FlutterSound {
       return result is bool ? result : false;
   }
 
-  Future<bool>  isDecoderSupported(t_CODEC codec) async {
+  Future<bool> isDecoderSupported(t_CODEC codec) async {
     var result =
         await _channel.invokeMethod('isDecoderSupported', <String, dynamic> { 'codec': codec.index } );
     return result is bool ? result : false;
@@ -79,12 +81,21 @@ class FlutterSound {
     if (_onSpeechController == null) {
       _onSpeechController = new StreamController.broadcast();
     }
+    if (_onSpeechErrorController == null) {
+      _onSpeechErrorController = new StreamController.broadcast();
+    }
     _channel.setMethodCallHandler((MethodCall call) {
+      print(call.method);
       switch (call.method) {
         case "onSpeech":
           String result = call.arguments;
           if (_onSpeechController != null)
             _onSpeechController.add(result);
+          break;
+        case "onError":
+          int result = call.arguments;
+          if (_onSpeechController != null)
+            _onSpeechErrorController.add(result);
           break;
         default:
           throw new ArgumentError('Unknown method ${call.method} ');

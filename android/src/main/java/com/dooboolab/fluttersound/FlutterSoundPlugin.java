@@ -81,7 +81,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private SpeechRecognizer speech;
   private MethodChannel speechChannel;
   String transcription = "";
-  private Intent recognizerIntent;
   private Activity activity;
 
   //mainThread handler
@@ -166,12 +165,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     this.activity = activity;
     this.speechChannel = channel;
     this.speechChannel.setMethodCallHandler(this);
-
-    recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-    recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-    recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
 }
 
   @Override
@@ -645,7 +638,12 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
   @Override
   public void recordAndRecognizeSpeech(MethodChannel.Result result) {
-    // recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, getLocale(call.arguments.toString()));
+    Intent recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
 }
@@ -659,7 +657,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void onReadyForSpeech(Bundle params) {
       Log.d(LOG_TAG, "onReadyForSpeech");
-      speechChannel.invokeMethod("speech.onSpeechAvailability", true);
+      speechChannel.invokeMethod("onSpeechAvailability", true);
   }
 
   @Override
@@ -667,7 +665,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       Log.d(LOG_TAG, "onRecognitionStarted");
       transcription = "";
 
-      speechChannel.invokeMethod("speech.onRecognitionStarted", null);
+      speechChannel.invokeMethod("onRecognitionStarted", null);
   }
 
   @Override
@@ -683,14 +681,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void onEndOfSpeech() {
       Log.d(LOG_TAG, "onEndOfSpeech");
-      speechChannel.invokeMethod("speech.onRecognitionComplete", transcription);
+      speechChannel.invokeMethod("onRecognitionComplete", transcription);
   }
 
   @Override
   public void onError(int error) {
       Log.d(LOG_TAG, "onError : " + error);
-      speechChannel.invokeMethod("speech.onSpeechAvailability", false);
-      speechChannel.invokeMethod("speech.onError", error);
+      speechChannel.invokeMethod("onSpeechAvailability", false);
+      speechChannel.invokeMethod("onError", error);
   }
 
   @Override
@@ -719,8 +717,13 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   private void sendTranscription(boolean isFinal) {
-      String method = isFinal ? "speech.onRecognitionComplete" : "speech.onSpeech";
-      Log.d(LOG_TAG, "invoke " + method + "(" + transcription + ")");
-      speechChannel.invokeMethod(method, transcription);
+      // String method = isFinal ? "onRecognitionComplete" : "onSpeech";
+      // Log.d(LOG_TAG, "invoke " + method + "(" + transcription + ")");
+      // speechChannel.invokeMethod(method, transcription);
+      if (isFinal) {
+        String method = "onSpeech";
+        Log.d(LOG_TAG, "invoke " + method + "(" + transcription + ")");
+        speechChannel.invokeMethod(method, transcription);
+    }
   }
 }
