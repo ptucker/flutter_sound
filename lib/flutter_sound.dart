@@ -416,6 +416,7 @@ class FlutterSound {
     if (!_speechPermissions) {
       //need to check permissions before we listen
       return _channel.invokeMethod('requestSpeechRecognitionPermission').then((b) {
+        _speechPermissions = b;
         if (b) {
           _setSpeechCallback();
           return _channel.invokeMethod('recordAndRecognizeSpeech');

@@ -1,9 +1,12 @@
 package com.dooboolab.fluttersound;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.media.MediaCodecList;
+import android.media.MediaCodecInfo;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -78,6 +81,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   final private AudioModel model = new AudioModel();
   private Timer mTimer = new Timer();
   final private Handler recordHandler = new Handler();
+  private Context context;
   private SpeechRecognizer speech;
   private MethodChannel speechChannel;
   String transcription = "";
@@ -159,8 +163,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   FlutterSoundPlugin(Activity activity, MethodChannel channel) {
-    speech = SpeechRecognizer.createSpeechRecognizer(activity.getApplicationContext());
-    speech.setRecognitionListener(this);
+    context = activity.getApplicationContext();
 
     this.activity = activity;
     this.speechChannel = channel;
@@ -638,11 +641,16 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
   @Override
   public void recordAndRecognizeSpeech(MethodChannel.Result result) {
+    Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(context)));
+    speech = SpeechRecognizer.createSpeechRecognizer(context);
+    speech.setRecognitionListener(this);
+    transcription = "";
+    
     Intent recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+    //recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 10000);
 
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
@@ -651,7 +659,10 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void stopRecognizeSpeech(MethodChannel.Result result) {
     speech.stopListening();
+    speech.destroy();
+    speech = null;
     result.success(transcription);
+    transcription = "";
   }
 
   @Override
@@ -710,7 +721,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void onResults(Bundle results) {
       Log.d(LOG_TAG, "onResults...");
       ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-      String text = "";
       transcription = matches.get(0);
       Log.d(LOG_TAG, "onResults -> " + transcription);
       sendTranscription(true);
