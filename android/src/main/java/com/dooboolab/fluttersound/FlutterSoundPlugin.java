@@ -3,6 +3,7 @@ package com.dooboolab.fluttersound;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.media.MediaCodecList;
@@ -81,7 +82,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   final private AudioModel model = new AudioModel();
   private Timer mTimer = new Timer();
   final private Handler recordHandler = new Handler();
-  private Context context;
   private SpeechRecognizer speech;
   private MethodChannel speechChannel;
   String transcription = "";
@@ -163,8 +163,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   FlutterSoundPlugin(Activity activity, MethodChannel channel) {
-    context = activity.getApplicationContext();
-
     this.activity = activity;
     this.speechChannel = channel;
     this.speechChannel.setMethodCallHandler(this);
@@ -641,8 +639,10 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
   @Override
   public void recordAndRecognizeSpeech(MethodChannel.Result result) {
-    Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(context)));
-    speech = SpeechRecognizer.createSpeechRecognizer(context);
+    if (speech != null)
+      stopRecognizeSpeech();
+    Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.activity)));
+    speech = SpeechRecognizer.createSpeechRecognizer(this.activity);
     speech.setRecognitionListener(this);
     transcription = "";
     
@@ -651,18 +651,35 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
     //recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 10000);
-
+    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
+    audmgr.setStreamMute(AudioManager.STREAM_NOTIFICATION, true);
+    audmgr.setStreamMute(AudioManager.STREAM_ALARM, true);
+    audmgr.setStreamMute(AudioManager.STREAM_MUSIC, true);
+    audmgr.setStreamMute(AudioManager.STREAM_RING, true);
+    audmgr.setStreamMute(AudioManager.STREAM_SYSTEM, true);
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
 }
 
   @Override
   public void stopRecognizeSpeech(MethodChannel.Result result) {
-    speech.stopListening();
-    speech.destroy();
-    speech = null;
+    stopRecognizeSpeech();
+    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
+    audmgr.setStreamMute(AudioManager.STREAM_NOTIFICATION, false);
+    audmgr.setStreamMute(AudioManager.STREAM_ALARM, false);
+    audmgr.setStreamMute(AudioManager.STREAM_MUSIC, false);
+    audmgr.setStreamMute(AudioManager.STREAM_RING, false);
+    audmgr.setStreamMute(AudioManager.STREAM_SYSTEM, false);
     result.success(transcription);
     transcription = "";
+  }
+
+  private void stopRecognizeSpeech() {
+    if (speech != null) {
+      speech.stopListening();
+      speech.destroy();
+      speech = null;
+    }
   }
 
   @Override
