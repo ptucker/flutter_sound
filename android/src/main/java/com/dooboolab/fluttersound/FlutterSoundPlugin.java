@@ -85,6 +85,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private SpeechRecognizer speech;
   private MethodChannel speechChannel;
   String transcription = "";
+  private int streamVolume;
   private Activity activity;
 
   //mainThread handler
@@ -166,6 +167,10 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     this.activity = activity;
     this.speechChannel = channel;
     this.speechChannel.setMethodCallHandler(this);
+
+    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
+    streamVolume = audmgr.getStreamVolume(AudioManager.STREAM_MUSIC);
+    Log.d(LOG_TAG, String.format("Stream volume: %d", streamVolume));
 }
 
   @Override
@@ -650,13 +655,8 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-    //recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 10000);
     AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
-    audmgr.setStreamMute(AudioManager.STREAM_NOTIFICATION, true);
-    audmgr.setStreamMute(AudioManager.STREAM_ALARM, true);
-    audmgr.setStreamMute(AudioManager.STREAM_MUSIC, true);
-    audmgr.setStreamMute(AudioManager.STREAM_RING, true);
-    audmgr.setStreamMute(AudioManager.STREAM_SYSTEM, true);
+    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
 }
@@ -665,11 +665,8 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void stopRecognizeSpeech(MethodChannel.Result result) {
     stopRecognizeSpeech();
     AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
-    audmgr.setStreamMute(AudioManager.STREAM_NOTIFICATION, false);
-    audmgr.setStreamMute(AudioManager.STREAM_ALARM, false);
-    audmgr.setStreamMute(AudioManager.STREAM_MUSIC, false);
-    audmgr.setStreamMute(AudioManager.STREAM_RING, false);
-    audmgr.setStreamMute(AudioManager.STREAM_SYSTEM, false);
+    Log.d(LOG_TAG, String.format("Returning stream volume: %d", streamVolume));
+    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, streamVolume, 0);
     result.success(transcription);
     transcription = "";
   }
