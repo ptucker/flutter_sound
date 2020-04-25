@@ -6,8 +6,6 @@ import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
-import android.media.MediaCodecList;
-import android.media.MediaCodecInfo;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -83,15 +81,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private Timer mTimer = new Timer();
   final private Handler recordHandler = new Handler();
   private SpeechRecognizer speech;
-  private MethodChannel speechChannel;
+  private MethodChannel flutterSoundChannel;
   String transcription = "";
-  private int streamVolume;
-  private Activity activity;
+  private int streamVolume = 4;
+  private Context context;
 
   //mainThread handler
   final private Handler mainHandler = new Handler();
   final private Handler dbPeakLevelHandler = new Handler();
-  private static MethodChannel channel;
 
   final static int CODEC_OPUS = 2;
   final static int CODEC_VORBIS = 5;
@@ -158,19 +155,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
     /** Plugin registration. */
   public static void registerWith(Registrar registrar) {
-    channel = new MethodChannel(registrar.messenger(), "flutter_sound");
-    channel.setMethodCallHandler(new FlutterSoundPlugin(registrar.activity(), channel));
+    MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_sound");
+    channel.setMethodCallHandler(new FlutterSoundPlugin(registrar.activeContext(), channel));
     reg = registrar;
   }
 
-  FlutterSoundPlugin(Activity activity, MethodChannel channel) {
-    this.activity = activity;
-    this.speechChannel = channel;
-    this.speechChannel.setMethodCallHandler(this);
-
-    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
-    streamVolume = audmgr.getStreamVolume(AudioManager.STREAM_MUSIC);
-    Log.d(LOG_TAG, String.format("Stream volume: %d", streamVolume));
+  FlutterSoundPlugin(Context context, MethodChannel channel) {
+    this.context = context;
+    this.flutterSoundChannel = channel;
 }
 
   @Override
@@ -346,7 +338,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         try {
           JSONObject json = new JSONObject();
           json.put("current_position", String.valueOf(time));
-          channel.invokeMethod("updateRecorderProgress", json.toString());
+          flutterSoundChannel.invokeMethod("updateRecorderProgress", json.toString());
           recordHandler.postDelayed(model.getRecorderTicker(), model.subsDurationMillis);
         } catch (JSONException je) {
           Log.d(TAG, "Json Exception: " + je.toString());
@@ -378,7 +370,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
             Log.d(TAG, "rawAmplitude: " + maxAmplitude + " Base DB: " + db);
 
-            channel.invokeMethod("updateDbPeakProgress", db);
+            flutterSoundChannel.invokeMethod("updateDbPeakProgress", db);
             dbPeakLevelHandler.postDelayed(model.getDbLevelTicker(),
             (FlutterSoundPlugin.this.model.peakLevelUpdateMillis));
           }
@@ -469,7 +461,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
               mainHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                  channel.invokeMethod("updateProgress", json.toString());
+                  flutterSoundChannel.invokeMethod("updateProgress", json.toString());
                 }
               });
 
@@ -496,7 +488,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
           JSONObject json = new JSONObject();
           json.put("duration", String.valueOf(mp.getDuration()));
           json.put("current_position", String.valueOf(mp.getCurrentPosition()));
-          channel.invokeMethod("audioPlayerDidFinishPlaying", json.toString());
+          flutterSoundChannel.invokeMethod("audioPlayerDidFinishPlaying", json.toString());
         } catch (JSONException je) {
           Log.d(TAG, "Json Exception: " + je.toString());
         }
@@ -638,7 +630,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void requestSpeechRecognitionPermission(MethodChannel.Result result) {
     result.success(true);
-    Locale locale = activity.getResources().getConfiguration().locale;
+    Locale locale = context.getResources().getConfiguration().locale;
     Log.d(LOG_TAG, "Current Locale : " + locale.toString());
   }
 
@@ -646,8 +638,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void recordAndRecognizeSpeech(MethodChannel.Result result) {
     if (speech != null)
       stopRecognizeSpeech();
-    Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.activity)));
-    speech = SpeechRecognizer.createSpeechRecognizer(this.activity);
+
+    AudioManager audmgr=(AudioManager)this.context.getSystemService(Context.AUDIO_SERVICE);
+    int v = audmgr.getStreamVolume(AudioManager.STREAM_MUSIC);
+    if (v != 0)
+      streamVolume = v;
+    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
+    Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.context)));
+    speech = SpeechRecognizer.createSpeechRecognizer(this.context);
     speech.setRecognitionListener(this);
     transcription = "";
     
@@ -655,8 +653,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
-    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
 }
@@ -664,8 +660,8 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void stopRecognizeSpeech(MethodChannel.Result result) {
     stopRecognizeSpeech();
-    AudioManager audmgr=(AudioManager)this.activity.getSystemService(Context.AUDIO_SERVICE);
-    Log.d(LOG_TAG, String.format("Returning stream volume: %d", streamVolume));
+    AudioManager audmgr=(AudioManager)this.context.getSystemService(Context.AUDIO_SERVICE);
+    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
     audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, streamVolume, 0);
     result.success(transcription);
     transcription = "";
@@ -682,7 +678,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void onReadyForSpeech(Bundle params) {
       Log.d(LOG_TAG, "onReadyForSpeech");
-      speechChannel.invokeMethod("onSpeechAvailability", true);
+      flutterSoundChannel.invokeMethod("onSpeechAvailability", true);
   }
 
   @Override
@@ -690,7 +686,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       Log.d(LOG_TAG, "onRecognitionStarted");
       transcription = "";
 
-      speechChannel.invokeMethod("onRecognitionStarted", null);
+      flutterSoundChannel.invokeMethod("onRecognitionStarted", null);
   }
 
   @Override
@@ -706,14 +702,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void onEndOfSpeech() {
       Log.d(LOG_TAG, "onEndOfSpeech");
-      speechChannel.invokeMethod("onRecognitionComplete", transcription);
+      flutterSoundChannel.invokeMethod("onRecognitionComplete", transcription);
   }
 
   @Override
   public void onError(int error) {
       Log.d(LOG_TAG, "onError : " + error);
-      speechChannel.invokeMethod("onSpeechAvailability", false);
-      speechChannel.invokeMethod("onError", error);
+      flutterSoundChannel.invokeMethod("onSpeechAvailability", false);
+      flutterSoundChannel.invokeMethod("onError", error);
   }
 
   @Override
@@ -747,7 +743,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       if (isFinal) {
         String method = "onSpeech";
         Log.d(LOG_TAG, "invoke " + method + "(" + transcription + ")");
-        speechChannel.invokeMethod(method, transcription);
+        flutterSoundChannel.invokeMethod(method, transcription);
     }
   }
 }

@@ -54,6 +54,10 @@ class FlutterSound {
   t_AUDIO_STATE _audio_state = t_AUDIO_STATE.IS_STOPPED;
   bool _isPlaying() => _audio_state == t_AUDIO_STATE.IS_PLAYING || _audio_state == t_AUDIO_STATE.IS_PAUSED;
 
+  FlutterSound() {
+    _channel.setMethodCallHandler(methodCallHandler);
+  }
+
   Future<bool> isEncoderSupported(t_CODEC codec) async {
       var result =
           await _channel.invokeMethod('isEncoderSupported', <String, dynamic> { 'codec': codec.index } );
@@ -77,6 +81,52 @@ class FlutterSound {
       return result;
   }
 
+  Future<dynamic> methodCallHandler(MethodCall call) {
+    switch (call.method) {
+      case "onSpeech":
+        String result = call.arguments;
+        if (_onSpeechController != null)
+          _onSpeechController.add(result);
+        break;
+      case "onError":
+        int result = call.arguments;
+        if (_onSpeechController != null)
+          _onSpeechErrorController.add(result);
+        break;
+
+      case "updateRecorderProgress":
+        Map<String, dynamic> result = json.decode(call.arguments);
+        if (_recorderController != null)
+          _recorderController.add(new RecordStatus.fromJSON(result));
+        break;
+      case "updateDbPeakProgress":
+        if (_dbPeakController!= null)
+          _dbPeakController.add(call.arguments);
+        break;
+
+      case "updateProgress":
+        Map<String, dynamic> result = jsonDecode(call.arguments);
+        if (_playerController!=null)
+          _playerController.add(new PlayStatus.fromJSON(result));
+        break;
+      case "audioPlayerDidFinishPlaying":
+        Map<String, dynamic> result = jsonDecode(call.arguments);
+        PlayStatus status = new PlayStatus.fromJSON(result);
+        if (status.currentPosition != status.duration) {
+          status.currentPosition = status.duration;
+        }
+        if (_playerController != null)
+          _playerController.add(status);
+        _audio_state = t_AUDIO_STATE.IS_STOPPED;
+        _removePlayerCallback();
+        break;
+
+      default:
+        throw new ArgumentError('Unknown method ${call.method} ');
+    }
+    return null;
+  }
+
   Future<void> _setSpeechCallback() async {
     if (_onSpeechController == null) {
       _onSpeechController = new StreamController.broadcast();
@@ -84,24 +134,6 @@ class FlutterSound {
     if (_onSpeechErrorController == null) {
       _onSpeechErrorController = new StreamController.broadcast();
     }
-    _channel.setMethodCallHandler((MethodCall call) {
-      print(call.method);
-      switch (call.method) {
-        case "onSpeech":
-          String result = call.arguments;
-          if (_onSpeechController != null)
-            _onSpeechController.add(result);
-          break;
-        case "onError":
-          int result = call.arguments;
-          if (_onSpeechController != null)
-            _onSpeechErrorController.add(result);
-          break;
-        default:
-          throw new ArgumentError('Unknown method ${call.method} ');
-      }
-      return null;
-    });
   }
 
   Future<void> _setRecorderCallback() async {
@@ -111,53 +143,12 @@ class FlutterSound {
     if (_dbPeakController == null) {
       _dbPeakController = new StreamController.broadcast();
     }
-
-    _channel.setMethodCallHandler((MethodCall call) {
-      switch (call.method) {
-        case "updateRecorderProgress":
-          Map<String, dynamic> result = json.decode(call.arguments);
-          if (_recorderController != null)
-            _recorderController.add(new RecordStatus.fromJSON(result));
-          break;
-        case "updateDbPeakProgress":
-        if (_dbPeakController!= null)
-          _dbPeakController.add(call.arguments);
-          break;
-        default:
-          throw new ArgumentError('Unknown method ${call.method} ');
-      }
-      return null;
-    });
   }
 
   Future<void> _setPlayerCallback() async {
     if (_playerController == null) {
       _playerController = new StreamController.broadcast();
     }
-
-    _channel.setMethodCallHandler((MethodCall call) {
-      switch (call.method) {
-        case "updateProgress":
-          Map<String, dynamic> result = jsonDecode(call.arguments);
-          if (_playerController!=null)
-            _playerController.add(new PlayStatus.fromJSON(result));
-          break;
-        case "audioPlayerDidFinishPlaying":
-          Map<String, dynamic> result = jsonDecode(call.arguments);
-          PlayStatus status = new PlayStatus.fromJSON(result);
-          if (status.currentPosition != status.duration) {
-            status.currentPosition = status.duration;
-          }
-          if (_playerController != null)
-            _playerController.add(status);
-          _audio_state = t_AUDIO_STATE.IS_STOPPED;
-          _removePlayerCallback();
-          break;
-        default:
-          throw new ArgumentError('Unknown method ${call.method}');
-      }
-      return null;
-    });
   }
 
   Future<void> _removeSpeechCallback() async {
@@ -390,9 +381,8 @@ class FlutterSound {
   /// Defines the interval at which the peak level should be updated.
   /// Default is 0.8 seconds
   Future<String> setDbPeakLevelUpdate(double intervalInSecs) async {
-    var result = await _channel
-      .invokeMethod('setDbPeakLevelUpdate', <String, dynamic>{
-    'intervalInSecs': intervalInSecs,
+    var result = await _channel.invokeMethod('setDbPeakLevelUpdate', <String, dynamic>{
+      'intervalInSecs': intervalInSecs,
     });
     if (result is FlutterError)
       return Future.value(result.toString());
@@ -402,9 +392,8 @@ class FlutterSound {
 
   /// Enables or disables processing the Peak level in db's. Default is disabled
   Future<String> setDbLevelEnabled(bool enabled) async {
-    var result = await _channel
-      .invokeMethod('setDbLevelEnabled', <String, dynamic>{
-    'enabled': enabled,
+    var result = await _channel.invokeMethod('setDbLevelEnabled', <String, dynamic>{
+      'enabled': enabled,
     });
     if (result is FlutterError)
       return Future.value(result.toString());
