@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.net.Uri;
 import android.util.Log;
 import android.app.Activity;
 import android.content.Intent;
@@ -80,7 +81,10 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   final private AudioModel model = new AudioModel();
   private Timer mTimer = new Timer();
   final private Handler recordHandler = new Handler();
+  private Intent recognizerIntent;
   private SpeechRecognizer speech;
+  private boolean saveUserAudio = false;
+  private Uri audioUri;
   private MethodChannel flutterSoundChannel;
   String transcription = "";
   private int streamVolume = 4;
@@ -249,11 +253,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         this.requestSpeechRecognitionPermission(result);
         break;
       case "recordAndRecognizeSpeech":
-        this.recordAndRecognizeSpeech(result);
+        boolean save = (call.argument("toTmpFile") != null) ? call.argument("toTmpFile") : false;
+        this.recordAndRecognizeSpeech(save, result);
         break;
       case "stopRecognizeSpeech":
         this.stopRecognizeSpeech(result);
         break;
+      case "getTempAudioFile":
+        this.getTempAudioFile(result);
       default:
         result.notImplemented();
         break;
@@ -628,6 +635,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   @Override
+  public void getTempAudioFile(MethodChannel.Result result) {
+    result.success(audioUri == null ? null : audioUri.getPath());
+  }
+  
+  @Override
   public void requestSpeechRecognitionPermission(MethodChannel.Result result) {
     result.success(true);
     Locale locale = context.getResources().getConfiguration().locale;
@@ -635,7 +647,9 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   @Override
-  public void recordAndRecognizeSpeech(MethodChannel.Result result) {
+  public void recordAndRecognizeSpeech(boolean saveAudio, MethodChannel.Result result) {
+    saveUserAudio = saveAudio;
+    audioUri = null;
     if (speech != null)
       stopRecognizeSpeech();
 
@@ -649,10 +663,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     speech.setRecognitionListener(this);
     transcription = "";
     
-    Intent recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+    recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+    if (saveUserAudio) {
+      recognizerIntent.putExtra("android.speech.extra.GET_AUDIO_FORMAT", "audio/AMR");
+      recognizerIntent.putExtra("android.speech.extra.GET_AUDIO", true);
+    }
     speech.startListening(recognizerIntent);
     result.success("recordAndRecognizeSpeech successful");
 }
@@ -665,6 +683,9 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, streamVolume, 0);
     result.success(transcription);
     transcription = "";
+    if (saveUserAudio) {
+      audioUri = recognizerIntent.getData();
+    }
   }
 
   private void stopRecognizeSpeech() {
@@ -719,7 +740,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       transcription = matches.get(0);
       Log.d(LOG_TAG, "onPartialResults -> " + transcription);
       sendTranscription(false);
-
   }
 
   @Override
@@ -734,6 +754,10 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       transcription = matches.get(0);
       Log.d(LOG_TAG, "onResults -> " + transcription);
       sendTranscription(true);
+
+      if (saveUserAudio) {
+        audioUri = recognizerIntent.getData();
+      }
   }
 
   private void sendTranscription(boolean isFinal) {

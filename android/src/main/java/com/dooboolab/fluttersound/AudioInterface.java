@@ -26,8 +26,9 @@ interface AudioInterface {
   void setSubscriptionDuration(double sec, MethodChannel.Result result);
   void setDbPeakLevelUpdate(double intervalInSecs, MethodChannel.Result result);
   void setDbLevelEnabled(boolean enabled, MethodChannel.Result result);
+  void getTempAudioFile(MethodChannel.Result result);
   void requestSpeechRecognitionPermission(MethodChannel.Result result);
-  void recordAndRecognizeSpeech(MethodChannel.Result result);
+  void recordAndRecognizeSpeech(boolean saveTempAudio, MethodChannel.Result result);
   void stopRecognizeSpeech(MethodChannel.Result result);
 }
   
