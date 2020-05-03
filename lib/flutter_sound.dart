@@ -401,14 +401,16 @@ class FlutterSound {
       return result;
   }
 
-  Future<String> recordAndRecognizeSpeech() async {
+  Future<String> recordAndRecognizeSpeech({bool toTmpFile = false}) async {
     if (!_speechPermissions) {
       //need to check permissions before we listen
       return _channel.invokeMethod('requestSpeechRecognitionPermission').then((b) {
         _speechPermissions = b;
         if (b) {
           _setSpeechCallback();
-          return _channel.invokeMethod('recordAndRecognizeSpeech');
+          return _channel.invokeMethod('recordAndRecognizeSpeech', <String, dynamic>{
+            'toTmpFile': toTmpFile,
+          });
         }
         else
           return Future.value('error: permission for speech not granted');
@@ -416,7 +418,9 @@ class FlutterSound {
     }
     else {
       _setSpeechCallback();
-      return _channel.invokeMethod('recordAndRecognizeSpeech');
+      return _channel.invokeMethod('recordAndRecognizeSpeech', <String, dynamic>{
+        'toTmpFile': toTmpFile,
+      });
     }
   }
 
@@ -427,6 +431,10 @@ class FlutterSound {
       return Future.value(result.toString());
     else
       return result;
+  }
+
+  Future<String> getTempAudioFile() async {
+    return _channel.invokeMethod('getTempAudioFile');
   }
 }
 

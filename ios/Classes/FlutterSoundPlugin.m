@@ -65,6 +65,8 @@ NSString* GetDirectoryOfType_FlutterSound(NSSearchPathDirectory dir) {
     double lastRecog;
     bool recogComplete;
     NSString *transcript;
+  bool recordSpeech;
+  NSMutableArray* speechBuffers;
   NSTimer *timer;
   NSTimer *dbPeakTimer;
     NSTimer *speechTimer;
@@ -296,10 +298,13 @@ NSString* _lastErrorCall;
       [self requestSpeechRecognitionPermission: result];
   }
   else if ([@"recordAndRecognizeSpeech" isEqualToString:call.method]) {
-      [self recordAndRecognizeSpeech: result];
+      [self recordAndRecognizeSpeech: [call.arguments[@"toTmpFile"] boolValue] result:result];
   }
   else if ([@"stopRecognizeSpeech" isEqualToString:call.method]) {
       [self stopRecognizeSpeech: result];
+  }
+  else if ([@"getTempAudioFile" isEqualToString:call.method]) {
+    result([self getTempAudioFile]);
   }
   else {
     result(FlutterMethodNotImplemented);
@@ -559,6 +564,10 @@ NSString* _lastErrorCall;
     }
 }
 
+- (NSString*) getTempAudioFile {
+  return [NSString stringWithFormat:@"%@/tmpaudio.wav", NSTemporaryDirectory()];
+}
+
 - (void) isRecogDone: (NSTimer*) timer {
     double curr = [[NSDate date] timeIntervalSince1970];
     if (lastRecog > 0 && curr - lastRecog >= msBeforeRecogComplete) {
@@ -569,10 +578,25 @@ NSString* _lastErrorCall;
         NSLog([NSString stringWithFormat:@"transcript: %@", transcript]);
         [self onSpeech:transcript];
         [self stopRecognizeSpeech:nil];
+
+        if (recordSpeech && [speechBuffers count] > 0) {
+          NSURL* tmpFile = [NSURL fileURLWithPath: [self getTempAudioFile]];
+          NSError* err;
+          AVAudioPCMBuffer* buff = [speechBuffers objectAtIndex:0];
+          AVAudioFile* audio = [[AVAudioFile alloc] initForWriting:tmpFile settings: [[buff format] settings] error:&err];
+          if (err != nil)
+            NSLog([NSString stringWithFormat: @"avaudiofile init error: %@, file: %@", [err localizedDescription], [tmpFile absoluteString]]);
+          for (AVAudioPCMBuffer* b in speechBuffers) {
+            [audio writeFromBuffer: b error: &err];
+            if (err != nil)
+              NSLog([NSString stringWithFormat: @"avaudiofile write error: %@", [err localizedDescription]]);
+          }
+        }
     }
 }
 
-- (void)recordAndRecognizeSpeech: (FlutterResult)result {
+- (void)recordAndRecognizeSpeech: (BOOL)tmpFile result:(FlutterResult)result {
+    recordSpeech = tmpFile;
     if (request != nil) {
         if (result != nil)
             result(@"Already listening");
@@ -582,6 +606,8 @@ NSString* _lastErrorCall;
     transcript = [[NSString alloc] init];
     lastRecog = 0;
     recogComplete = false;
+    if (recordSpeech)
+      speechBuffers = [[NSMutableArray alloc] init];
     request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
 
     if (audioEngine == nil)
@@ -618,6 +644,8 @@ NSString* _lastErrorCall;
                 }
             }];
             
+            if (self->recordSpeech)
+                [self->speechBuffers addObject:convertedBuffer];
             [self->request appendAudioPCMBuffer:convertedBuffer];
         }];
     }
