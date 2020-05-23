@@ -294,11 +294,14 @@ NSString* _lastErrorCall;
       BOOL enabled = [call.arguments[@"enabled"] boolValue];
       [self setDbLevelEnabled:enabled result:result];
   }
+  else if ([@"supportedSpeechLocales" isEqualToString:call.method]) {
+    [self supportedSpeechLocales: result];
+  }
   else if ([@"requestSpeechRecognitionPermission" isEqualToString:call.method]) {
       [self requestSpeechRecognitionPermission: result];
   }
   else if ([@"recordAndRecognizeSpeech" isEqualToString:call.method]) {
-      [self recordAndRecognizeSpeech: [call.arguments[@"toTmpFile"] boolValue] result:result];
+      [self recordAndRecognizeSpeech: [call.arguments[@"toTmpFile"] boolValue] lang: [call.arguments[@"langcode"] stringValue] result:result];
   }
   else if ([@"stopRecognizeSpeech" isEqualToString:call.method]) {
       [self stopRecognizeSpeech: result];
@@ -553,6 +556,15 @@ NSString* _lastErrorCall;
     }
 }
 
+- (void) supportedSpeechLocales: (FlutterResult)result {
+  NSSet* locales = [SFSpeechRecognizer supportedLocales];
+  NSMutableArray* codes = [[NSMutableArray alloc] init];
+  for (NSLocale* l in locales) {
+    [codes addObject:[l localeIdentifier]];
+  }
+  result(codes);
+}
+
 - (void) requestSpeechRecognitionPermission: (FlutterResult)result {
     if (SFSpeechRecognizer.authorizationStatus == SFSpeechRecognizerAuthorizationStatusAuthorized) {
         result([NSNumber numberWithBool:true]);
@@ -595,7 +607,7 @@ NSString* _lastErrorCall;
     }
 }
 
-- (void)recordAndRecognizeSpeech: (BOOL)tmpFile result:(FlutterResult)result {
+- (void)recordAndRecognizeSpeech: (BOOL)tmpFile lang: (NSString*) langcode result:(FlutterResult)result {
     recordSpeech = tmpFile;
     if (request != nil) {
         if (result != nil)
@@ -677,8 +689,14 @@ NSString* _lastErrorCall;
     }
     //NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
 
-    if (speechRecognizer == nil)
+    if (speechRecognizer == nil) {
+      if (langcode != nil && [langcode length] > 0) {
+        NSLocale* locale = [NSLocale localeWithLocaleIdentifier:langcode];
+        speechRecognizer = [[SFSpeechRecognizer alloc] initWithLocale:locale];
+      }
+      else
         speechRecognizer = [[SFSpeechRecognizer alloc] init];
+    }
     if (![speechRecognizer isAvailable]) {
         NSLog(@"no recognizer available");
         if (result != nil)

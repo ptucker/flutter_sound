@@ -401,7 +401,11 @@ class FlutterSound {
       return result;
   }
 
-  Future<String> recordAndRecognizeSpeech({bool toTmpFile = false}) async {
+  Future<List<String>> supportedSpeechLocales() {
+    return _channel.invokeListMethod('supportedSpeechLocales');
+  }
+
+  Future<String> recordAndRecognizeSpeech({bool toTmpFile = false, String langcode = 'en_US'}) async {
     if (!_speechPermissions) {
       //need to check permissions before we listen
       return _channel.invokeMethod('requestSpeechRecognitionPermission').then((b) {
@@ -410,6 +414,7 @@ class FlutterSound {
           _setSpeechCallback();
           return _channel.invokeMethod('recordAndRecognizeSpeech', <String, dynamic>{
             'toTmpFile': toTmpFile,
+            'langcode': langcode
           });
         }
         else
