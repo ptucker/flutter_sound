@@ -425,6 +425,7 @@ class FlutterSound {
       _setSpeechCallback();
       return _channel.invokeMethod('recordAndRecognizeSpeech', <String, dynamic>{
         'toTmpFile': toTmpFile,
+        'langcode': langcode
       });
     }
   }

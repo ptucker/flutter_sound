@@ -1,6 +1,7 @@
 package com.dooboolab.fluttersound;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
@@ -25,6 +26,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -83,6 +85,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   final private Handler recordHandler = new Handler();
   private Intent recognizerIntent;
   private SpeechRecognizer speech;
+  private List<String> _supportedLanguages;
   private boolean saveUserAudio = false;
   private Uri audioUri;
   private MethodChannel flutterSoundChannel;
@@ -167,7 +170,20 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   FlutterSoundPlugin(Context context, MethodChannel channel) {
     this.context = context;
     this.flutterSoundChannel = channel;
-}
+
+    //https://stackoverflow.com/questions/10538791/how-to-set-the-language-in-speech-recognition-on-android/10548680#10548680
+    Intent detailsIntent =  new Intent(RecognizerIntent.ACTION_GET_LANGUAGE_DETAILS);
+    context.sendOrderedBroadcast(detailsIntent, null, new BroadcastReceiver() {
+      @Override
+      public void onReceive(Context context, Intent intent) {
+        Bundle results = getResultExtras(true);
+        if (results.containsKey(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES))
+        {
+          _supportedLanguages = results.getStringArrayList(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES);
+        }
+      }
+    }, null, Activity.RESULT_OK, null, null);
+  }
 
   @Override
   public void onMethodCall(final MethodCall call, final Result result) {
@@ -249,12 +265,16 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         double duration = call.argument("sec");
         this.setSubscriptionDuration(duration, result);
         break;
+      case "supportedSpeechLocales":
+        this.supportedSpeechLocales(result);
+        break;
       case "requestSpeechRecognitionPermission":
         this.requestSpeechRecognitionPermission(result);
         break;
       case "recordAndRecognizeSpeech":
         boolean save = (call.argument("toTmpFile") != null) ? call.argument("toTmpFile") : false;
-        this.recordAndRecognizeSpeech(save, result);
+        String langcode = (call.argument("langcode") != null) ? call.argument("langcode") : null;
+        this.recordAndRecognizeSpeech(save, langcode, result);
         break;
       case "stopRecognizeSpeech":
         this.stopRecognizeSpeech(result);
@@ -638,6 +658,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void getTempAudioFile(MethodChannel.Result result) {
     result.success(audioUri == null ? null : audioUri.getPath());
   }
+
+  @Override
+  public void supportedSpeechLocales(MethodChannel.Result result) {
+    result.success(_supportedLanguages);
+  }
   
   @Override
   public void requestSpeechRecognitionPermission(MethodChannel.Result result) {
@@ -647,7 +672,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   @Override
-  public void recordAndRecognizeSpeech(boolean saveAudio, MethodChannel.Result result) {
+  public void recordAndRecognizeSpeech(boolean saveAudio, String langcode, MethodChannel.Result result) {
     saveUserAudio = saveAudio;
     audioUri = null;
     if (speech != null)
@@ -664,6 +689,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     transcription = "";
     
     recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, langcode != null ? langcode :  "en-US");
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
     recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
