@@ -4,7 +4,6 @@ import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.speech.RecognitionListener;
@@ -678,11 +677,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     if (speech != null)
       stopRecognizeSpeech();
 
-    AudioManager audmgr=(AudioManager)this.context.getSystemService(Context.AUDIO_SERVICE);
-    int v = audmgr.getStreamVolume(AudioManager.STREAM_MUSIC);
-    if (v != 0)
-      streamVolume = v;
-    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
     Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.context)));
     speech = SpeechRecognizer.createSpeechRecognizer(this.context);
     speech.setRecognitionListener(this);
@@ -704,9 +698,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void stopRecognizeSpeech(MethodChannel.Result result) {
     stopRecognizeSpeech();
-    AudioManager audmgr=(AudioManager)this.context.getSystemService(Context.AUDIO_SERVICE);
-    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
-    audmgr.setStreamVolume(AudioManager.STREAM_MUSIC, streamVolume, 0);
     result.success(transcription);
     transcription = "";
     if (saveUserAudio) {
