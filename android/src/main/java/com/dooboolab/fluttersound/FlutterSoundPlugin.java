@@ -280,6 +280,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         break;
       case "getTempAudioFile":
         this.getTempAudioFile(result);
+        break;
       default:
         result.notImplemented();
         break;
