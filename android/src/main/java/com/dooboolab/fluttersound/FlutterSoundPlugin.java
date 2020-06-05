@@ -267,6 +267,9 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       case "supportedSpeechLocales":
         this.supportedSpeechLocales(result);
         break;
+      case "getDeviceLanguage":
+        this.getDeviceLanguage(result);
+        break;
       case "requestSpeechRecognitionPermission":
         this.requestSpeechRecognitionPermission(result);
         break;
@@ -664,6 +667,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     result.success(_supportedLanguages);
   }
   
+  @Override
+  public void getDeviceLanguage(MethodChannel.Result result) {
+    result.success(Locale.getDefault().toLanguageTag());
+  }
+
   @Override
   public void requestSpeechRecognitionPermission(MethodChannel.Result result) {
     result.success(true);
