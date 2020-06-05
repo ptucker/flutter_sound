@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.speech.RecognitionListener;
@@ -17,6 +18,8 @@ import android.net.Uri;
 import android.util.Log;
 import android.app.Activity;
 import android.content.Intent;
+
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import java.io.*;
 
@@ -270,7 +273,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       case "getDeviceLanguage":
         this.getDeviceLanguage(result);
         break;
-        case "getDeviceLanguageTag":
+      case "getDeviceLanguageTag":
         this.getDeviceLanguageTag(result);
         break;
       case "requestSpeechRecognitionPermission":
@@ -677,7 +680,12 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
   @Override
   public void getDeviceLanguageTag(MethodChannel.Result result) {
-    result.success(Locale.getDefault().toLanguageTag());
+    if (Build.VERSION.SDK_INT < 21) {
+      result.success("");
+    }
+    else {
+      result.success(Locale.getDefault().toLanguageTag());
+    }
   }
 
   @Override
@@ -693,6 +701,8 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     audioUri = null;
     if (speech != null)
       stopRecognizeSpeech();
+
+    muteAudio(true);
 
     Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.context)));
     speech = SpeechRecognizer.createSpeechRecognizer(this.context);
@@ -728,6 +738,18 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       speech.destroy();
       speech = null;
     }
+
+    muteAudio(false);
+  }
+
+  int cachedVolume = 0;
+  private void muteAudio(boolean shouldMute) {
+    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+    if (shouldMute)
+      cachedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+    audio.setStreamVolume(AudioManager.STREAM_MUSIC, shouldMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
+    if (!shouldMute)
+      audio.setStreamVolume(AudioManager.STREAM_MUSIC, cachedVolume, 0);
   }
 
   @Override
