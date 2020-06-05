@@ -301,7 +301,7 @@ NSString* _lastErrorCall;
       [self requestSpeechRecognitionPermission: result];
   }
   else if ([@"recordAndRecognizeSpeech" isEqualToString:call.method]) {
-      [self recordAndRecognizeSpeech: [call.arguments[@"toTmpFile"] boolValue] lang: [call.arguments[@"langcode"] stringValue] result:result];
+      [self recordAndRecognizeSpeech: [call.arguments[@"toTmpFile"] boolValue] lang: (NSString*)call.arguments[@"langcode"] result:result];
   }
   else if ([@"stopRecognizeSpeech" isEqualToString:call.method]) {
       [self stopRecognizeSpeech: result];
@@ -688,20 +688,24 @@ NSString* _lastErrorCall;
         }
     }
     //NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
-
+    bool langSet = (langcode != nil && [langcode length] > 0);
+    if (langSet) {
+      NSLocale* locale = [NSLocale localeWithLocaleIdentifier:langcode];
+      speechRecognizer = [[SFSpeechRecognizer alloc] initWithLocale:locale];
+    }
+    if (!langSet || speechRecognizer == nil)
+      speechRecognizer = [[SFSpeechRecognizer alloc] init];
     if (speechRecognizer == nil) {
-      if (langcode != nil && [langcode length] > 0) {
-        NSLocale* locale = [NSLocale localeWithLocaleIdentifier:langcode];
-        speechRecognizer = [[SFSpeechRecognizer alloc] initWithLocale:locale];
-      }
-      else
-        speechRecognizer = [[SFSpeechRecognizer alloc] init];
+      NSLog(@"failed to get recognizer");
+      if (result != nil)
+        result([FlutterError errorWithCode:@"Audio Speech" message:@"failed to get recognizer" details:nil]);
+      return;
     }
     if (![speechRecognizer isAvailable]) {
-        NSLog(@"no recognizer available");
-        if (result != nil)
-          result([FlutterError errorWithCode:@"Audio Speech" message:@"no recognizer available" details:nil]);
-        return;
+      NSLog(@"no recognizer available");
+      if (result != nil)
+        result([FlutterError errorWithCode:@"Audio Speech" message:@"no recognizer available" details:nil]);
+      return;
     }
 
     recognitionTask = [speechRecognizer recognitionTaskWithRequest:request
@@ -751,6 +755,7 @@ NSString* _lastErrorCall;
     recognitionTask = nil;
     [audioEngine stop];
     audioEngine = nil;
+    speechRecognizer = nil;
     NSLog([NSString stringWithFormat:@"stop listener engine running: %d", [audioEngine isRunning]]);
 
     if (result != nil)
