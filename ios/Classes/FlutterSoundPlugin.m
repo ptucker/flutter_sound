@@ -688,13 +688,19 @@ NSString* _lastErrorCall;
         }
     }
     //NSLog([NSString stringWithFormat:@"start listener engine running: %d", [audioEngine isRunning]]);
-
-    if (langcode != nil && [langcode length] > 0) {
+    bool langSet = (langcode != nil && [langcode length] > 0);
+    if (langSet) {
       NSLocale* locale = [NSLocale localeWithLocaleIdentifier:langcode];
       speechRecognizer = [[SFSpeechRecognizer alloc] initWithLocale:locale];
     }
-    else
+    if (!langSet || speechRecognizer == nil)
       speechRecognizer = [[SFSpeechRecognizer alloc] init];
+    if (speechRecognizer == nil) {
+      NSLog(@"failed to get recognizer");
+      if (result != nil)
+        result([FlutterError errorWithCode:@"Audio Speech" message:@"failed to get recognizer" details:nil]);
+      return;
+    }
     if (![speechRecognizer isAvailable]) {
       NSLog(@"no recognizer available");
       if (result != nil)
