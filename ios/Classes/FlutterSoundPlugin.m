@@ -297,6 +297,12 @@ NSString* _lastErrorCall;
   else if ([@"supportedSpeechLocales" isEqualToString:call.method]) {
     [self supportedSpeechLocales: result];
   }
+  else if ([@"getDeviceLanguage" isEqualToString:call.method]) {
+    [self getDeviceLanguage: result];
+  }
+  else if ([@"getDeviceLanguageTag" isEqualToString:call.method]) {
+    [self getDeviceLanguageTag: result];
+  }
   else if ([@"requestSpeechRecognitionPermission" isEqualToString:call.method]) {
       [self requestSpeechRecognitionPermission: result];
   }
@@ -563,6 +569,15 @@ NSString* _lastErrorCall;
     [codes addObject:[l localeIdentifier]];
   }
   result(codes);
+}
+
+- (void) getDeviceLanguage: (FlutterResult)result {
+  NSString* langCode = [[NSLocale preferredLanguages] objectAtIndex:0];
+  result([[NSLocale currentLocale] displayNameForKey:NSLocaleLanguageCode value:langCode]);
+}
+
+- (void) getDeviceLanguageTag: (FlutterResult)result {
+  result([[NSLocale preferredLanguages] objectAtIndex:0]);
 }
 
 - (void) requestSpeechRecognitionPermission: (FlutterResult)result {
