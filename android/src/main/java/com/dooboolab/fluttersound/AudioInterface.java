@@ -29,6 +29,7 @@ interface AudioInterface {
   void getTempAudioFile(MethodChannel.Result result);
   void supportedSpeechLocales(MethodChannel.Result result);
   void getDeviceLanguage(MethodChannel.Result result);
+  void getDeviceLanguageTag(MethodChannel.Result result);
   void requestSpeechRecognitionPermission(MethodChannel.Result result);
   void recordAndRecognizeSpeech(boolean saveTempAudio, String langcode, MethodChannel.Result result);
   void stopRecognizeSpeech(MethodChannel.Result result);

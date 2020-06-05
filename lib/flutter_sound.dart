@@ -405,8 +405,12 @@ class FlutterSound {
     return _channel.invokeListMethod('supportedSpeechLocales');
   }
 
-  Future<String> getDeviceLangauge() {
-    return _channel.invokeMethod('getDeviceLangauge');
+  Future<String> getDeviceLanguage() {
+    return _channel.invokeMethod('getDeviceLanguage');
+  }
+
+  Future<String> getDeviceLanguageTag() {
+    return _channel.invokeMethod('getDeviceLanguageTag');
   }
 
   Future<String> recordAndRecognizeSpeech({bool toTmpFile = false, String langcode = 'en_US'}) async {
