@@ -282,6 +282,7 @@ class FlutterSound {
     else
       return result;
   }
+
   Future<String> startPlayerFromBuffer(Uint8List dataBuffer) async {
     var result = _startPlayer('startPlayerFromBuffer', {'dataBuffer': dataBuffer});
     if (result is FlutterError)
@@ -322,13 +323,13 @@ class FlutterSound {
     } catch (err) {
       print('err: $err');
       _audio_state = t_AUDIO_STATE.IS_STOPPED; // In fact _audio_state is in an unknown state
-      return err;
+      return Future.value(err.toString());
     }
   }
 
   Future<String> resumePlayer() async {
     if (_audio_state != t_AUDIO_STATE.IS_PAUSED ) {
-          throw PlayerRunningException('Player is not paused.');
+      throw PlayerRunningException('Player is not paused.');
     }
 
     try {
@@ -341,14 +342,13 @@ class FlutterSound {
         return result;
     } catch (err) {
       print('err: $err');
-      return err;
+      return Future.value(err.toString());
     }
   }
 
   Future<String> seekToPlayer(int milliSecs) async {
     try {
-      var result =
-          await _channel.invokeMethod('seekToPlayer', <String, dynamic>{
+      var result = await _channel.invokeMethod('seekToPlayer', <String, dynamic>{
         'sec': milliSecs,
       });
       if (result is FlutterError)
@@ -357,7 +357,7 @@ class FlutterSound {
         return result;
     } catch (err) {
       print('err: $err');
-      return err;
+      return Future.value(err.toString());
     }
   }
 

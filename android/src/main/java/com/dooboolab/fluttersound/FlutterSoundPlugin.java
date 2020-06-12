@@ -173,6 +173,9 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     this.context = context;
     this.flutterSoundChannel = channel;
 
+    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+    cachedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+
     //https://stackoverflow.com/questions/10538791/how-to-set-the-language-in-speech-recognition-on-android/10548680#10548680
     Intent detailsIntent =  new Intent(RecognizerIntent.ACTION_GET_LANGUAGE_DETAILS);
     context.sendOrderedBroadcast(detailsIntent, null, new BroadcastReceiver() {
@@ -497,7 +500,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
               mainHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                  flutterSoundChannel.invokeMethod("updateProgress", json.toString());
+                  //safe-guard this in case the media player becomes null before this is called.
+                  if (FlutterSoundPlugin.this.model.getMediaPlayer() != null)
+                    flutterSoundChannel.invokeMethod("updateProgress", json.toString());
+                  else
+                    Log.d(TAG, "Media player is null, so we're not calling updateProgress");
                 }
               });
 
@@ -520,6 +527,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
          * Reset player.
          */
         Log.d(TAG, "Plays completed.");
+
         try {
           JSONObject json = new JSONObject();
           json.put("duration", String.valueOf(mp.getDuration()));
@@ -528,6 +536,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         } catch (JSONException je) {
           Log.d(TAG, "Json Exception: " + je.toString());
         }
+
         mTimer.cancel();
         if(mp.isPlaying())
         {
@@ -745,10 +754,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   int cachedVolume = 0;
   private void muteAudio(boolean shouldMute) {
     AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-    if (shouldMute)
+    if (shouldMute) {
       cachedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-    audio.setStreamVolume(AudioManager.STREAM_MUSIC, shouldMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
-    if (!shouldMute)
+      audio.setStreamVolume(AudioManager.STREAM_MUSIC, shouldMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
+    }
+    else
       audio.setStreamVolume(AudioManager.STREAM_MUSIC, cachedVolume, 0);
   }
 
