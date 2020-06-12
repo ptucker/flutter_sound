@@ -65,6 +65,7 @@ NSString* GetDirectoryOfType_FlutterSound(NSSearchPathDirectory dir) {
     double lastRecog;
     bool recogComplete;
     NSString *transcript;
+    NSString *transcriptErr;
   bool recordSpeech;
   NSMutableArray* speechBuffers;
   NSTimer *timer;
@@ -175,6 +176,10 @@ NSString* _lastErrorCall;
 - (void)onSpeech:(NSString*) text
 {
     [_channel invokeMethod:@"onSpeech" arguments:text];
+}
+
+- (void)onSpeechError:(NSString*) errtext {
+    [_channel invokeMethod:@"onError" arguments:errtext];
 }
 
 - (void)startRecorderTimer
@@ -678,12 +683,13 @@ NSString* _lastErrorCall;
     }
     @catch (NSException* e) {
         NSString* msg = [NSString stringWithFormat:@"%@: %@", [e name], [e reason]];
-        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Speech Failed"
-                                                        message:msg
-                                                       delegate:self
-                                              cancelButtonTitle:@"OK"
-                                              otherButtonTitles:nil];
-        [alert show];
+        [self onSpeechError: msg];
+//        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Speech Failed"
+//                                                        message:msg
+//                                                       delegate:self
+//                                              cancelButtonTitle:@"OK"
+//                                              otherButtonTitles:nil];
+//        [alert show];
     }
     
     if (![audioEngine isRunning]) {
@@ -693,7 +699,7 @@ NSString* _lastErrorCall;
         [audioEngine startAndReturnError:&err];
         
         if (err != nil) {
-            //NSLog([NSString stringWithFormat:@"engine start error: %@", [err localizedDescription]]);
+            [self onSpeechError:[err localizedDescription]];
             if (result != nil) {
                 result([FlutterError errorWithCode:@"recordAndRecognizeSpeech - audioEngine start"
                                            message:[err localizedDescription]
@@ -727,6 +733,9 @@ NSString* _lastErrorCall;
                                                      resultHandler:^(SFSpeechRecognitionResult* recogResult, NSError* err) {
         if (err != nil) {
             NSLog([err localizedDescription]);
+            if (![[err localizedDescription] containsString:@"error 209"])
+                //Don't report 209 errors (not recognized, I think: https://github.com/macdonst/SpeechRecognitionPlugin/issues/88)
+                [self onSpeechError:[err localizedDescription]];
 //            _lastErrorCall = @"recognition result";
 //            _lastError = err;
         }
@@ -741,6 +750,7 @@ NSString* _lastErrorCall;
     }];
 
     if ([recognitionTask error] != nil) {
+        [self onSpeechError:[[recognitionTask error] localizedDescription]];
         if (result != nil)
           result([FlutterError errorWithCode:@"Error starting" message:[[recognitionTask error] localizedDescription] details:nil]);
         return;
@@ -754,8 +764,11 @@ NSString* _lastErrorCall;
                                                       repeats:YES];
     });
 
-    if (result != nil)
-      result(@"recordAndRecognizeSpeech successful");
+    if (result != nil) {
+        NSString* langCode = [[speechRecognizer locale] languageCode];
+        NSString* dispCode = [[NSLocale currentLocale] displayNameForKey:NSLocaleLanguageCode value:langCode];
+        result([NSString stringWithFormat:@"recordAndRecognizeSpeech successful: %@", dispCode]);
+    }
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex{
@@ -771,7 +784,7 @@ NSString* _lastErrorCall;
     [audioEngine stop];
     audioEngine = nil;
     speechRecognizer = nil;
-    NSLog([NSString stringWithFormat:@"stop listener engine running: %d", [audioEngine isRunning]]);
+    NSLog([NSString stringWithFormat:@"stop listener engine running: %d", [self->audioEngine isRunning]]);
 
     if (result != nil)
         result(transcript);

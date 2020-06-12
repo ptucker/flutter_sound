@@ -37,13 +37,13 @@ class FlutterSound {
   static StreamController<double> _dbPeakController;
   static StreamController<PlayStatus> _playerController;
   static StreamController<String> _onSpeechController;
-  static StreamController<int> _onSpeechErrorController;
+  static StreamController<String> _onSpeechErrorController;
   /// Value ranges from 0 to 120
   Stream<double> get onRecorderDbPeakChanged => _dbPeakController.stream;
   Stream<RecordStatus> get onRecorderStateChanged => _recorderController.stream;
   Stream<PlayStatus> get onPlayerStateChanged => _playerController.stream;
   Stream<String> get onSpeech => (_onSpeechController != null) ? _onSpeechController.stream : null;
-  Stream<int> get onSpeechError => (_onSpeechErrorController != null) ? _onSpeechErrorController.stream : null;
+  Stream<String> get onSpeechError => (_onSpeechErrorController != null) ? _onSpeechErrorController.stream : null;
   @Deprecated('Prefer to use audio_state variable')
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
@@ -89,7 +89,7 @@ class FlutterSound {
           _onSpeechController.add(result);
         break;
       case "onError":
-        int result = call.arguments;
+        String result = call.arguments;
         if (_onSpeechController != null)
           _onSpeechErrorController.add(result);
         break;
