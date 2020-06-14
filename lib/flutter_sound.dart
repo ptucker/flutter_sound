@@ -262,6 +262,7 @@ class FlutterSound {
       {
         print ('startPlayer result: $result');
         _setPlayerCallback ();
+        print ('_setPlayerCallback complete');
         _audio_state = t_AUDIO_STATE.IS_PLAYING;
       }
 
