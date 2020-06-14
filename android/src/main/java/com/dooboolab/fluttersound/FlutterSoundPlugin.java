@@ -437,7 +437,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     dbPeakLevelHandler.removeCallbacksAndMessages(null);
 
     if (this.model.getMediaRecorder() == null) {
-      Log.d(TAG, "mediaRecorder is null");
+      Log.d(TAG, "stopRecorder failed: mediaRecorder is null");
       result.error(ERR_RECORDER_IS_NULL, ERR_RECORDER_IS_NULL, ERR_RECORDER_IS_NULL);
       return;
     }
@@ -548,7 +548,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       });
       this.model.getMediaPlayer().prepare();
     } catch (Exception e) {
-      Log.e(TAG, "startPlayer() exception");
+      Log.e(TAG, "startPlayer() exception: " + e.getLocalizedMessage());
       result.error(ERR_UNKNOWN, ERR_UNKNOWN, e.getMessage());
     }
   }
@@ -561,6 +561,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       fos.write(dataBuffer);
       startPlayer(f.getAbsolutePath(), result);
     } catch(Exception e) {
+      Log.e(TAG, "startPlayerFromBuffer() exception: " + e.getLocalizedMessage());
       result.error(ERR_UNKNOWN, ERR_UNKNOWN, e.getMessage());
     }
   }
@@ -571,6 +572,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     mTimer.cancel();
 
     if (this.model.getMediaPlayer() == null) {
+      Log.e(TAG, "stopPlayer() failed, mediaPlayer is NULL");
       result.error(ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL);
       return;
     }
@@ -590,6 +592,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void pausePlayer(final Result result) {
     if (this.model.getMediaPlayer() == null) {
+      Log.e(TAG, "pausePlayer failed: mediaPlayer is NULL");
       result.error(ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL);
       return;
     }
@@ -606,11 +609,13 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void resumePlayer(final Result result) {
     if (this.model.getMediaPlayer() == null) {
+      Log.e(TAG, "resumePlayer failed: mediaPlayer is null");
       result.error(ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL);
       return;
     }
 
     if (this.model.getMediaPlayer().isPlaying()) {
+      Log.e(TAG, "resumePlayer failed: player already playing");
       result.error(ERR_PLAYER_IS_PLAYING, ERR_PLAYER_IS_PLAYING, ERR_PLAYER_IS_PLAYING);
       return;
     }
@@ -628,6 +633,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void seekToPlayer(int millis, final Result result) {
     if (this.model.getMediaPlayer() == null) {
+      Log.e(TAG, "seekToPlayer failed: mediaPlayer is NULL");
       result.error(ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL);
       return;
     }
@@ -645,6 +651,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   @Override
   public void setVolume(double volume, final Result result) {
     if (this.model.getMediaPlayer() == null) {
+      Log.e(TAG, "setVolume failed: mediaPlayer is NULL");
       result.error(ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL, ERR_PLAYER_IS_NULL);
       return;
     }
