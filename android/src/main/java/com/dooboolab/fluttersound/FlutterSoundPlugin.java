@@ -762,7 +762,9 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private void muteAudio(boolean shouldMute) {
     AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     if (shouldMute) {
-      cachedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+      int tmpVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+      if (tmpVolume != 0)
+        cachedVolume = tmpVolume;
       audio.setStreamVolume(AudioManager.STREAM_MUSIC, shouldMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
     }
     else
