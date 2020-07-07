@@ -805,7 +805,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   public void onError(int error) {
       Log.d(LOG_TAG, "onError : " + error);
       flutterSoundChannel.invokeMethod("onSpeechAvailability", false);
-      flutterSoundChannel.invokeMethod("onError", error);
+      flutterSoundChannel.invokeMethod("onError", String.valueOf(error));
   }
 
   @Override
