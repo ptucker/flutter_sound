@@ -87,7 +87,8 @@ NSString* _lastErrorCall;
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
                                      withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker |
                                                     AVAudioSessionCategoryOptionMixWithOthers |
-                                                    AVAudioSessionCategoryOptionAllowBluetooth
+                                                    AVAudioSessionCategoryOptionAllowBluetooth |
+                                                    AVAudioSessionCategoryOptionAllowBluetoothA2DP
                                            error:&err];
     if (err != nil) {
         NSLog([NSString stringWithFormat:@"error setting category: %@", [err localizedDescription]]);
