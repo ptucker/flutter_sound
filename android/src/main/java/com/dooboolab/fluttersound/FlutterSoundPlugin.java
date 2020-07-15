@@ -462,15 +462,15 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       if (isPaused) {
         this.model.getMediaPlayer().start();
         result.success("player resumed.");
-        return;
       }
-
-      Log.e(TAG, "Player is already running. Stop it first.");
-      result.success("player is already running.");
+      else {
+        Log.e(TAG, "Player is already running. Stop it first.");
+        result.success("player is already running.");
+      }
       return;
-    } else {
-      this.model.setMediaPlayer(new MediaPlayer());
     }
+
+    this.model.setMediaPlayer(new MediaPlayer());
     mTimer = new Timer();
 
     try {
@@ -515,8 +515,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         };
 
         mTimer.schedule(mTask, 0, model.subsDurationMillis);
-        String resolvedPath;
-          resolvedPath = (path == null) ? AudioModel.DEFAULT_FILE_LOCATION : path;
+        String resolvedPath = (path == null) ? AudioModel.DEFAULT_FILE_LOCATION : path;
         result.success((resolvedPath));
       });
       /*
@@ -762,13 +761,16 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private void muteAudio(boolean shouldMute) {
     AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     if (shouldMute) {
-      int tmpVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+      int tmpVolume = audio.getStreamVolume(AudioManager.STREAM_SYSTEM);
       if (tmpVolume != 0)
         cachedVolume = tmpVolume;
-      audio.setStreamVolume(AudioManager.STREAM_MUSIC, shouldMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
+      Log.d(LOG_TAG, "muting audio output");
+      audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
     }
-    else
-      audio.setStreamVolume(AudioManager.STREAM_MUSIC, cachedVolume, 0);
+    else {
+      Log.d(LOG_TAG, "unmuting audio output" + String.valueOf(cachedVolume));
+      audio.setStreamVolume(AudioManager.STREAM_SYSTEM, cachedVolume, 0);
+    }
   }
 
   @Override
