@@ -44,13 +44,13 @@ class FlutterSound {
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
   bool _speechPermissions = false;
-  t_AUDIO_STATE get audioState => _audio_state;
+  t_AUDIO_STATE get audioState => _audioState;
 
-  bool _isRecording() => _audio_state == t_AUDIO_STATE.IS_RECORDING;
-  t_AUDIO_STATE _audio_state = t_AUDIO_STATE.IS_STOPPED;
+  bool _isRecording() => _audioState == t_AUDIO_STATE.IS_RECORDING;
+  t_AUDIO_STATE _audioState = t_AUDIO_STATE.IS_STOPPED;
   bool _isPlaying() =>
-      _audio_state == t_AUDIO_STATE.IS_PLAYING ||
-      _audio_state == t_AUDIO_STATE.IS_PAUSED;
+      _audioState == t_AUDIO_STATE.IS_PLAYING ||
+      _audioState == t_AUDIO_STATE.IS_PAUSED;
 
   FlutterSound() {
     _channel.setMethodCallHandler(methodCallHandler);
@@ -112,7 +112,7 @@ class FlutterSound {
           status.currentPosition = status.duration;
         }
         if (_playerController != null) _playerController.add(status);
-        _audio_state = t_AUDIO_STATE.IS_STOPPED;
+        _audioState = t_AUDIO_STATE.IS_STOPPED;
         _removePlayerCallback();
         break;
 
@@ -193,7 +193,7 @@ class FlutterSound {
     AndroidOutputFormat androidOutputFormat = AndroidOutputFormat.DEFAULT,
     IosQuality iosQuality = IosQuality.LOW,
   }) async {
-    if (_audio_state != t_AUDIO_STATE.IS_STOPPED) {
+    if (_audioState != t_AUDIO_STATE.IS_STOPPED) {
       throw new RecorderRunningException('Recorder is not stopped.');
     }
     if (!await isEncoderSupported(codec))
@@ -212,7 +212,7 @@ class FlutterSound {
         'iosQuality': iosQuality?.value
       });
       _setRecorderCallback();
-      _audio_state = t_AUDIO_STATE.IS_RECORDING;
+      _audioState = t_AUDIO_STATE.IS_RECORDING;
       if (result is FlutterError)
         return Future.value(result.toString());
       else
@@ -223,13 +223,13 @@ class FlutterSound {
   }
 
   Future<String> stopRecorder() async {
-    if (_audio_state != t_AUDIO_STATE.IS_RECORDING) {
+    if (_audioState != t_AUDIO_STATE.IS_RECORDING) {
       throw new RecorderStoppedException('Recorder is not recording.');
     }
 
     var result = await _channel.invokeMethod('stopRecorder');
 
-    _audio_state = t_AUDIO_STATE.IS_STOPPED;
+    _audioState = t_AUDIO_STATE.IS_STOPPED;
     _removeRecorderCallback();
     _removeDbPeakCallback();
 
@@ -240,13 +240,13 @@ class FlutterSound {
   }
 
   Future<String> _startPlayer(String method, Map<String, dynamic> what) async {
-    if (_audio_state == t_AUDIO_STATE.IS_PAUSED) {
+    if (_audioState == t_AUDIO_STATE.IS_PAUSED) {
       this.resumePlayer();
-      _audio_state = t_AUDIO_STATE.IS_PLAYING;
+      _audioState = t_AUDIO_STATE.IS_PLAYING;
       return 'Player resumed';
       // throw PlayerRunningException('Player is already playing.');
     }
-    if (_audio_state != t_AUDIO_STATE.IS_STOPPED) {
+    if (_audioState != t_AUDIO_STATE.IS_STOPPED) {
       throw PlayerRunningException('Player is not stopped.');
     }
 
@@ -257,7 +257,7 @@ class FlutterSound {
         print('startPlayer result: $result');
         _setPlayerCallback();
         print('_setPlayerCallback complete');
-        _audio_state = t_AUDIO_STATE.IS_PLAYING;
+        _audioState = t_AUDIO_STATE.IS_PLAYING;
       }
 
       if (result is FlutterError)
@@ -287,12 +287,12 @@ class FlutterSound {
   }
 
   Future<String> stopPlayer() async {
-    if (_audio_state != t_AUDIO_STATE.IS_PAUSED &&
-        _audio_state != t_AUDIO_STATE.IS_PLAYING) {
+    if (_audioState != t_AUDIO_STATE.IS_PAUSED &&
+        _audioState != t_AUDIO_STATE.IS_PLAYING) {
       throw PlayerRunningException('Player is not playing.');
     }
 
-    _audio_state = t_AUDIO_STATE.IS_STOPPED;
+    _audioState = t_AUDIO_STATE.IS_STOPPED;
 
     var result = await _channel.invokeMethod('stopPlayer');
     _removePlayerCallback();
@@ -303,27 +303,27 @@ class FlutterSound {
   }
 
   Future<String> pausePlayer() async {
-    if (_audio_state != t_AUDIO_STATE.IS_PLAYING) {
+    if (_audioState != t_AUDIO_STATE.IS_PLAYING) {
       throw PlayerRunningException('Player is not playing.');
     }
 
     try {
       var result = await _channel.invokeMethod('pausePlayer');
-      if (result != null) _audio_state = t_AUDIO_STATE.IS_PAUSED;
+      if (result != null) _audioState = t_AUDIO_STATE.IS_PAUSED;
       if (result is FlutterError)
         return Future.value(result.toString());
       else
         return result;
     } catch (err) {
       print('err: $err');
-      _audio_state = t_AUDIO_STATE
+      _audioState = t_AUDIO_STATE
           .IS_STOPPED; // In fact _audio_state is in an unknown state
       return Future.value(err.toString());
     }
   }
 
   Future<String> resumePlayer() async {
-    if (_audio_state != t_AUDIO_STATE.IS_PAUSED) {
+    if (_audioState != t_AUDIO_STATE.IS_PAUSED) {
       throw PlayerRunningException('Player is not paused.');
     }
 
@@ -333,7 +333,7 @@ class FlutterSound {
       if (result is FlutterError)
         return Future.value(result.toString());
       else {
-        _audio_state = t_AUDIO_STATE.IS_PLAYING;
+        _audioState = t_AUDIO_STATE.IS_PLAYING;
         return result;
       }
     } catch (err) {
