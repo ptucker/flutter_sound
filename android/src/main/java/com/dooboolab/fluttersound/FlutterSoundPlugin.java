@@ -748,13 +748,13 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   private void stopRecognizeSpeech() {
+    muteAudio(false);
+
     if (speech != null) {
       speech.stopListening();
       speech.destroy();
       speech = null;
     }
-
-    muteAudio(false);
   }
 
   int cachedVolume = 0;
