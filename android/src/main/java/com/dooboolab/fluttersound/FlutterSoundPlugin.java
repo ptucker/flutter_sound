@@ -717,8 +717,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     if (speech != null)
       stopRecognizeSpeech();
 
-    muteAudio(true);
-
     Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.context)));
     speech = SpeechRecognizer.createSpeechRecognizer(this.context);
     speech.setRecognitionListener(this);
@@ -734,6 +732,8 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       recognizerIntent.putExtra("android.speech.extra.GET_AUDIO", true);
     }
     speech.startListening(recognizerIntent);
+
+    muteAudio(true);
 
     result.success("recordAndRecognizeSpeech successful");
 }
