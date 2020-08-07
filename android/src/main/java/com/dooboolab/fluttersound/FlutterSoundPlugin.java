@@ -28,6 +28,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Timer;
@@ -91,6 +92,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private boolean saveUserAudio = false;
   private Uri audioUri;
   private MethodChannel flutterSoundChannel;
+  private HashMap<Integer, Integer> cachedVolumes = new HashMap<Integer, Integer>();
   String transcription = "";
   private int streamVolume = 4;
   private Context context;
@@ -174,7 +176,13 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     this.flutterSoundChannel = channel;
 
     AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-    cachedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+    cachedVolumes.put(AudioManager.STREAM_ALARM, 0);
+    cachedVolumes.put(AudioManager.STREAM_MUSIC, 0);
+    //cachedVolumes.put(AudioManager.STREAM_NOTIFICATION, 0);
+    //cachedVolumes.put(AudioManager.STREAM_RING, 0);
+    for (Integer stream: cachedVolumes.keySet()) {
+      cachedVolumes.put(stream, audio.getStreamVolume(stream));
+    }
 
     //https://stackoverflow.com/questions/10538791/how-to-set-the-language-in-speech-recognition-on-android/10548680#10548680
     Intent detailsIntent =  new Intent(RecognizerIntent.ACTION_GET_LANGUAGE_DETAILS);
@@ -757,19 +765,19 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     muteAudio(false);
   }
 
-  int cachedVolume = 0;
   private void muteAudio(boolean shouldMute) {
     AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     if (shouldMute) {
-      int tmpVolume = audio.getStreamVolume(AudioManager.STREAM_SYSTEM);
-      if (tmpVolume != 0)
-        cachedVolume = tmpVolume;
-      Log.d(LOG_TAG, "muting audio output");
-      audio.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
+      for (Integer stream: cachedVolumes.keySet()) {
+        int tmpVolume = audio.getStreamVolume(stream);
+        if (tmpVolume != 0)
+          cachedVolumes.put(stream, tmpVolume);
+        audio.setStreamVolume(stream, 0, 0);
+      }
     }
     else {
-      Log.d(LOG_TAG, "unmuting audio output" + String.valueOf(cachedVolume));
-      audio.setStreamVolume(AudioManager.STREAM_SYSTEM, cachedVolume, 0);
+      for (Integer stream: cachedVolumes.keySet())
+        audio.setStreamVolume(stream, cachedVolumes.get(stream), 0);
     }
   }
 
