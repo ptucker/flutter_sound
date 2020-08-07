@@ -104,6 +104,8 @@ NSString* _lastErrorCall;
     return self;
 }
 
+-(void) terminate(){}
+
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
   NSLog(@"audioPlayerDidFinishPlaying");
     NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
@@ -262,6 +264,8 @@ NSString* _lastErrorCall;
 
     [self startRecorder:path:[NSNumber numberWithInt:numChannels]:[NSNumber numberWithInt:sampleRate]:coder:iosQuality:bitRate result:result];
 
+  } else if ([@"dispose" isEqualToString:call.method]) {
+    terminate();
   } else if ([@"isEncoderSupported" isEqualToString:call.method]) {
     NSNumber* codec = (NSNumber*)call.arguments[@"codec"];
     [self isEncoderSupported:[codec intValue] result:result];

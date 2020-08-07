@@ -34,12 +34,16 @@ class FlutterSound {
   static StreamController<PlayStatus> _playerController;
   static StreamController<String> _onSpeechController;
   static StreamController<String> _onSpeechErrorController;
+
   /// Value ranges from 0 to 120
   Stream<double> get onRecorderDbPeakChanged => _dbPeakController.stream;
   Stream<RecordStatus> get onRecorderStateChanged => _recorderController.stream;
   Stream<PlayStatus> get onPlayerStateChanged => _playerController.stream;
-  Stream<String> get onSpeech => (_onSpeechController != null) ? _onSpeechController.stream : null;
-  Stream<String> get onSpeechError => (_onSpeechErrorController != null) ? _onSpeechErrorController.stream : null;
+  Stream<String> get onSpeech =>
+      (_onSpeechController != null) ? _onSpeechController.stream : null;
+  Stream<String> get onSpeechError => (_onSpeechErrorController != null)
+      ? _onSpeechErrorController.stream
+      : null;
   @Deprecated('Prefer to use audio_state variable')
   bool get isPlaying => _isPlaying();
   bool get isRecording => _isRecording();
@@ -54,6 +58,10 @@ class FlutterSound {
 
   FlutterSound() {
     _channel.setMethodCallHandler(methodCallHandler);
+  }
+
+  Future<void> dispose() {
+    return _channel.invokeMethod('dispose');
   }
 
   Future<bool> isEncoderSupported(t_CODEC codec) async {
@@ -87,8 +95,7 @@ class FlutterSound {
         break;
       case "onError":
         String result = call.arguments;
-        if (_onSpeechController != null)
-          _onSpeechErrorController.add(result);
+        if (_onSpeechController != null) _onSpeechErrorController.add(result);
         break;
 
       case "updateRecorderProgress":
@@ -344,7 +351,8 @@ class FlutterSound {
 
   Future<String> seekToPlayer(int milliSecs) async {
     try {
-      var result = await _channel.invokeMethod('seekToPlayer', <String, dynamic>{
+      var result =
+          await _channel.invokeMethod('seekToPlayer', <String, dynamic>{
         'sec': milliSecs,
       });
       if (result is FlutterError)
@@ -412,7 +420,9 @@ class FlutterSound {
   }
 
   Future<String> recordAndRecognizeSpeech(
-      {bool toTmpFile = false, String langcode = 'en_US'}) async {
+      {bool toTmpFile = false,
+      String langcode = 'en_US',
+      bool mute = true}) async {
     if (!_speechPermissions) {
       //need to check permissions before we listen
       return _channel
@@ -421,21 +431,30 @@ class FlutterSound {
         _speechPermissions = b;
         if (b) {
           _setSpeechCallback();
-          return _channel.invokeMethod('recordAndRecognizeSpeech',
-              <String, dynamic>{'toTmpFile': toTmpFile, 'langcode': langcode});
+          return _channel.invokeMethod(
+              'recordAndRecognizeSpeech', <String, dynamic>{
+            'toTmpFile': toTmpFile,
+            'langcode': langcode,
+            'mute': mute
+          });
         } else
           return Future.value('error: permission for speech not granted');
       });
     } else {
       _setSpeechCallback();
-      return _channel.invokeMethod('recordAndRecognizeSpeech',
-          <String, dynamic>{'toTmpFile': toTmpFile, 'langcode': langcode});
+      return _channel.invokeMethod(
+          'recordAndRecognizeSpeech', <String, dynamic>{
+        'toTmpFile': toTmpFile,
+        'langcode': langcode,
+        'mute': mute
+      });
     }
   }
 
-  Future<String> stopRecognizeSpeech() async {
+  Future<String> stopRecognizeSpeech({bool unmute = false}) async {
     _removeSpeechCallback();
-    var result = await _channel.invokeMethod('stopRecognizeSpeech');
+    var result = await _channel.invokeMethod(
+        'stopRecognizeSpeech', <String, dynamic>{'unmute': unmute});
     if (result is FlutterError)
       return Future.value(result.toString());
     else

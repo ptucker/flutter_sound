@@ -19,10 +19,12 @@ import android.util.Log;
 import android.app.Activity;
 import android.content.Intent;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import java.io.*;
 
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.util.PathUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -94,7 +96,6 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   private MethodChannel flutterSoundChannel;
   private HashMap<Integer, Integer> cachedVolumes = new HashMap<Integer, Integer>();
   String transcription = "";
-  private int streamVolume = 4;
   private Context context;
 
   //mainThread handler
@@ -164,6 +165,14 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     , "wav"   // CODEC_PCM
   };
 
+  int streamVolumes[] = {
+//          AudioManager.STREAM_ALARM
+//          , AudioManager.STREAM_MUSIC
+          AudioManager.STREAM_NOTIFICATION
+//          , AudioManager.STREAM_SYSTEM
+//          , AudioManager.STREAM_RING
+  };
+
     /** Plugin registration. */
   public static void registerWith(Registrar registrar) {
     MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_sound");
@@ -175,14 +184,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     this.context = context;
     this.flutterSoundChannel = channel;
 
-    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-    cachedVolumes.put(AudioManager.STREAM_ALARM, 0);
-    cachedVolumes.put(AudioManager.STREAM_MUSIC, 0);
-    //cachedVolumes.put(AudioManager.STREAM_NOTIFICATION, 0);
-    //cachedVolumes.put(AudioManager.STREAM_RING, 0);
-    for (Integer stream: cachedVolumes.keySet()) {
-      cachedVolumes.put(stream, audio.getStreamVolume(stream));
-    }
+    this.init();
 
     //https://stackoverflow.com/questions/10538791/how-to-set-the-language-in-speech-recognition-on-android/10548680#10548680
     Intent detailsIntent =  new Intent(RecognizerIntent.ACTION_GET_LANGUAGE_DETAILS);
@@ -198,10 +200,38 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     }, null, Activity.RESULT_OK, null, null);
   }
 
+  protected void finalize() {
+    terminate();
+  }
+
+  public void init() {
+    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+    for (Integer stream: streamVolumes) {
+      cachedVolumes.put(stream, audio.getStreamVolume(stream));
+      Log.d(TAG, String.format("cached %d volume to %d", stream, cachedVolumes.get(stream)));
+    }
+  }
+
+  public void terminate() {
+    if (context == null || cachedVolumes.size() == 0)
+      return;
+    //restore the audio settings when this goes away
+    AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+    if (audio == null) return;
+    for (Integer stream: cachedVolumes.keySet()) {
+      Log.d(TAG, String.format("setting %d to %d", stream, cachedVolumes.get(stream)));
+      audio.setStreamVolume(stream, cachedVolumes.get(stream), AudioManager.FLAG_SHOW_UI);
+    }
+  }
+
   @Override
   public void onMethodCall(final MethodCall call, final Result result) {
     final String path = call.argument("path");
     switch (call.method) {
+      case "dispose":
+        terminate();
+        result.success(null);
+        break;
       case "isDecoderSupported": {
         int _codec = call.argument("codec");
         boolean b = _isAndroidDecoderSupported[_codec];
@@ -293,10 +323,12 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
       case "recordAndRecognizeSpeech":
         boolean save = (call.argument("toTmpFile") != null) ? call.argument("toTmpFile") : false;
         String langcode = (call.argument("langcode") != null) ? call.argument("langcode") : null;
-        this.recordAndRecognizeSpeech(save, langcode, result);
+        boolean mute = (call.argument("mute") != null) ? call.argument("mute") : false;
+        this.recordAndRecognizeSpeech(save, langcode, mute, result);
         break;
       case "stopRecognizeSpeech":
-        this.stopRecognizeSpeech(result);
+        boolean unmute = (call.argument("unmute") != null) ? call.argument("unmute") : false;
+        this.stopRecognizeSpeech(unmute, result);
         break;
       case "getTempAudioFile":
         this.getTempAudioFile(result);
@@ -719,11 +751,11 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
   }
 
   @Override
-  public void recordAndRecognizeSpeech(boolean saveAudio, String langcode, MethodChannel.Result result) {
+  public void recordAndRecognizeSpeech(boolean saveAudio, String langcode, boolean mute, MethodChannel.Result result) {
     saveUserAudio = saveAudio;
     audioUri = null;
     if (speech != null)
-      stopRecognizeSpeech();
+      stopRecognizeSpeech(false);
 
     Log.d(LOG_TAG, String.format("IsRecogAvailable: %b", SpeechRecognizer.isRecognitionAvailable(this.context)));
     speech = SpeechRecognizer.createSpeechRecognizer(this.context);
@@ -741,14 +773,15 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     }
     speech.startListening(recognizerIntent);
 
-    muteAudio(true);
+    if (mute)
+      muteAudio(true);
 
     result.success("recordAndRecognizeSpeech successful");
 }
 
   @Override
-  public void stopRecognizeSpeech(MethodChannel.Result result) {
-    stopRecognizeSpeech();
+  public void stopRecognizeSpeech(boolean unmute, MethodChannel.Result result) {
+    stopRecognizeSpeech(unmute);
     result.success(transcription);
     transcription = "";
     if (saveUserAudio) {
@@ -756,13 +789,13 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
     }
   }
 
-  private void stopRecognizeSpeech() {
+  private void stopRecognizeSpeech(boolean unmute) {
     if (speech != null) {
       speech.stopListening();
       speech.destroy();
       speech = null;
     }
-    muteAudio(false);
+    if (unmute) muteAudio(false);
   }
 
   private void muteAudio(boolean shouldMute) {
@@ -772,12 +805,18 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
         int tmpVolume = audio.getStreamVolume(stream);
         if (tmpVolume != 0)
           cachedVolumes.put(stream, tmpVolume);
-        audio.setStreamVolume(stream, 0, 0);
+        if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !audio.isStreamMute(stream)) || tmpVolume > 0) {
+          Log.d(LOG_TAG, String.format("Muting %d from %d", stream, audio.getStreamVolume(stream)));
+          audio.setStreamVolume(stream, 0, 0);
+        }
       }
     }
     else {
-      for (Integer stream: cachedVolumes.keySet())
+      for (Integer stream: cachedVolumes.keySet()) {
+        Log.d(LOG_TAG, String.format("Unmuting %d from %d to %d", stream, audio.getStreamVolume(stream), cachedVolumes.get(stream)));
+        audio.setStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0);
         audio.setStreamVolume(stream, cachedVolumes.get(stream), 0);
+      }
     }
   }
 
@@ -797,7 +836,7 @@ public class FlutterSoundPlugin implements MethodCallHandler, PluginRegistry.Req
 
   @Override
   public void onRmsChanged(float rmsdB) {
-      Log.d(LOG_TAG, "onRmsChanged : " + rmsdB);
+      //Log.d(LOG_TAG, "onRmsChanged : " + rmsdB);
   }
 
   @Override
