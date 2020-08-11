@@ -56,12 +56,12 @@ class sdkCompat {
   static final int OUTPUT_FORMAT_OGG    = 11; // MediaRecorder.OutputFormat.OGG    added in API level 29
   static final int VERSION_CODES_M      = 23; // added in API level 23
 
-  static int checkRecordPermission(Registrar reg) {
+  //New flutter plugin implementation
+  static int checkRecordPermission(Activity activity, Context context) {
     if (Build.VERSION.SDK_INT >= sdkCompat.VERSION_CODES_M) {// Before Marshmallow, record permission was always granted.
-      Activity activity = reg.activity();
-      if (reg.context().checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      if (context.checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
         ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.RECORD_AUDIO,}, 0);
-        if (reg.context().checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+        if (context.checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
           return PackageManager.PERMISSION_DENIED;
       }
     }
@@ -72,8 +72,11 @@ class sdkCompat {
 
 /** FlutterSoundPlugin */
 public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
-  private static Registrar reg;
-  static FlutterSoundMethodHandler plugin;
+  private  static Registrar _reg;
+  private static Context _context;
+  private static Activity _activity;
+  private static FlutterSoundMethodHandler _plugin;
+
 
     /** Plugin registration. */
   public static void registerWith(Registrar registrar) {
@@ -81,22 +84,28 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
     FlutterSoundMethodHandler plugin = new FlutterSoundMethodHandler(registrar.activeContext(), channel);
     plugin.init();
     channel.setMethodCallHandler(plugin);
-    reg = registrar;
+    _reg = registrar;
   }
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
-
+    if (_plugin == null) {
+      MethodChannel channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_sound");
+      _plugin = new FlutterSoundMethodHandler(binding.getApplicationContext(), channel);
+      _plugin.init();
+      _context = binding.getApplicationContext();
+      channel.setMethodCallHandler(_plugin);
+    }
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-    plugin.terminate();
+    _plugin.terminate();
   }
 
   @Override
   public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
-
+    _activity = binding.getActivity();
   }
 
   @Override
@@ -387,12 +396,14 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
     public void startRecorder(Integer numChannels, Integer sampleRate, Integer bitRate, t_CODEC codec, int androidEncoder, int androidAudioSource, int androidOutputFormat, String path, final Result result) {
       final int v = Build.VERSION.SDK_INT;
 
-      if (sdkCompat.checkRecordPermission(reg) != PackageManager.PERMISSION_GRANTED) {
+      int perm = (_reg != null) ? sdkCompat.checkRecordPermission(_reg.activity(), _reg.activity().getApplicationContext()) : sdkCompat.checkRecordPermission(_activity, _context);
+      if (perm != PackageManager.PERMISSION_GRANTED) {
         result.error(TAG, "NO PERMISSION GRANTED", Manifest.permission.RECORD_AUDIO + " or " + Manifest.permission.WRITE_EXTERNAL_STORAGE);
         return;
       }
 
-      path = PathUtils.getDataDirectory(reg.context()) + "/" + path; // SDK 29 : you may not write in getExternalStorageDirectory() [LARPOUX]
+      String datadir = (_reg != null) ? PathUtils.getDataDirectory(_reg.activity().getApplicationContext()) : PathUtils.getDataDirectory(_context);
+      path = datadir + "/" + path; // SDK 29 : you may not write in getExternalStorageDirectory() [LARPOUX]
       MediaRecorder mediaRecorder = model.getMediaRecorder();
 
       if (mediaRecorder == null) {
@@ -565,6 +576,10 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
               // DateFormat format = new SimpleDateFormat("mm:ss:SS", Locale.US);
               // final String displayTime = format.format(time);
               try {
+                //safe-guard this in case the media player becomes null before this is called.
+                MediaPlayer _mp = FlutterSoundMethodHandler.this.model.getMediaPlayer();
+                if (_mp == null) return;
+
                 JSONObject json = new JSONObject();
                 json.put("duration", String.valueOf(mp.getDuration()));
                 json.put("current_position", String.valueOf(mp.getCurrentPosition()));
@@ -578,7 +593,6 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
                       Log.d(TAG, "Media player is null, so we're not calling updateProgress");
                   }
                 });
-
               } catch (JSONException je) {
                 Log.d(TAG, "Json Exception: " + je.toString());
               }
