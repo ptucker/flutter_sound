@@ -104,10 +104,10 @@ NSString* _lastErrorCall;
     return self;
 }
 
--(void) terminate { NSLog(@"Nothing to do"); }
-
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
   NSLog(@"audioPlayerDidFinishPlaying");
+  [self stopPlayer];
+
     NSNumber *duration = [NSNumber numberWithDouble:audioPlayer.duration * 1000];
     NSNumber *currentTime = [NSNumber numberWithDouble:audioPlayer.currentTime * 1000];
 
@@ -122,8 +122,6 @@ NSString* _lastErrorCall;
                            };
   */
   [_channel invokeMethod:@"audioPlayerDidFinishPlaying" arguments:status];
-
-  [self stopTimer];
 }
 
 - (void) stopTimer{
@@ -264,8 +262,6 @@ NSString* _lastErrorCall;
 
     [self startRecorder:path:[NSNumber numberWithInt:numChannels]:[NSNumber numberWithInt:sampleRate]:coder:iosQuality:bitRate result:result];
 
-  } else if ([@"dispose" isEqualToString:call.method]) {
-    [self terminate];
   } else if ([@"isEncoderSupported" isEqualToString:call.method]) {
     NSNumber* codec = (NSNumber*)call.arguments[@"codec"];
     [self isEncoderSupported:[codec intValue] result:result];
@@ -491,19 +487,17 @@ NSString* _lastErrorCall;
 - (void)stopPlayer:(FlutterResult)result {
     NSLog(@"stopping player");
   if (audioPlayer) {
-    if (timer != nil) {
-        [timer invalidate];
-        timer = nil;
-    }
-    [audioPlayer stop];
-    audioPlayer = nil;
+    [self stopPlayer];
     result(@"stop play");
   } else {
-    result([FlutterError
-        errorWithCode:@"Audio Player"
-        message:@"player is not set"
-        details:nil]);
+    result(@"nothing to stop");
   }
+}
+
+-(void)stopPlayer {
+  [audioPlayer stop];
+  [self stopTimer];
+  audioPlayer = nil;
 }
 
 - (void)pausePlayer:(FlutterResult)result {
