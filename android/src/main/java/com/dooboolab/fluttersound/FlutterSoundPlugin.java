@@ -267,10 +267,6 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
     public void onMethodCall(final MethodCall call, final Result result) {
       final String path = call.argument("path");
       switch (call.method) {
-        case "dispose":
-          terminate();
-          result.success(null);
-          break;
         case "isDecoderSupported": {
           int _codec = call.argument("codec");
           boolean b = _isAndroidDecoderSupported[_codec];

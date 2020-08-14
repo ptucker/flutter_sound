@@ -60,10 +60,6 @@ class FlutterSound {
     _channel.setMethodCallHandler(methodCallHandler);
   }
 
-  Future<void> dispose() {
-    return _channel.invokeMethod('dispose');
-  }
-
   Future<bool> isEncoderSupported(t_CODEC codec) async {
     var result = await _channel.invokeMethod(
         'isEncoderSupported', <String, dynamic>{'codec': codec.index});
