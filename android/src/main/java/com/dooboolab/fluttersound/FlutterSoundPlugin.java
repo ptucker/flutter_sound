@@ -815,8 +815,7 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
       }
       speech.startListening(recognizerIntent);
 
-      if (mute)
-        muteAudio(true);
+      muteAudio(true);
 
       result.success("recordAndRecognizeSpeech successful");
     }
