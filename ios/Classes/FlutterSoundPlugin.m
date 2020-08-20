@@ -734,7 +734,7 @@ NSString* _lastErrorCall;
             NSLog([err localizedDescription]);
             if (![[err localizedDescription] containsString:@"error 209"])
                 //Don't report 209 errors (not recognized, I think: https://github.com/macdonst/SpeechRecognitionPlugin/issues/88)
-                [self onSpeechError:[err localizedDescription]];
+                [self onSpeechError:[NSString stringWithFormat:@"%d",[err code]]];
 //            _lastErrorCall = @"recognition result";
 //            _lastError = err;
         }
