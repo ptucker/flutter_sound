@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:core';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:developer';
 import 'dart:typed_data' show Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -105,18 +106,22 @@ class FlutterSound {
 
       case "updateProgress":
         Map<String, dynamic> result = jsonDecode(call.arguments);
-        if (_playerController != null)
-          _playerController.add(new PlayStatus.fromJSON(result));
+        if (_playerController != null) {
+          var status = new PlayStatus.fromJSON(result);
+          _playerController.add(status);
+        }
         break;
       case "audioPlayerDidFinishPlaying":
         Map<String, dynamic> result = jsonDecode(call.arguments);
         PlayStatus status = new PlayStatus.fromJSON(result);
-        if (status.currentPosition != status.duration) {
-          status.currentPosition = status.duration;
+        //Indicate clearly that we're past the end
+        status.currentPosition = -1000;
+        log(status.toString());
+        if (_playerController != null) {
+          _playerController.add(status);
         }
-        if (_playerController != null) _playerController.add(status);
         _audioState = t_AUDIO_STATE.IS_STOPPED;
-        _removePlayerCallback();
+        // _removePlayerCallback();
         break;
 
       default:
