@@ -1,8 +1,10 @@
 package com.dooboolab.fluttersound;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -17,6 +19,7 @@ import android.os.SystemClock;
 import android.net.Uri;
 import android.util.Log;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.Intent;
 
 import androidx.annotation.NonNull;
@@ -76,15 +79,19 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
   private static Context _context;
   private static Activity _activity;
   private static FlutterSoundMethodHandler _plugin;
+  private static boolean _initCalled = false;
 
 
     /** Plugin registration. */
   public static void registerWith(Registrar registrar) {
-    MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_sound");
-    FlutterSoundMethodHandler plugin = new FlutterSoundMethodHandler(registrar.activeContext(), channel);
-    plugin.init();
-    channel.setMethodCallHandler(plugin);
-    _reg = registrar;
+    if (_plugin == null) {
+      MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_sound");
+      _plugin = new FlutterSoundMethodHandler(registrar.activeContext(), channel);
+      _plugin.init();
+      checkDoNotDisturb(registrar.activeContext());
+      channel.setMethodCallHandler(_plugin);
+      _reg = registrar;
+    }
   }
 
   @Override
@@ -94,6 +101,7 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
       _plugin = new FlutterSoundMethodHandler(binding.getApplicationContext(), channel);
       _plugin.init();
       _context = binding.getApplicationContext();
+      checkDoNotDisturb(_context);
       channel.setMethodCallHandler(_plugin);
     }
   }
@@ -121,6 +129,42 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
   @Override
   public void onDetachedFromActivity() {
 
+  }
+
+  private static void checkDoNotDisturb(Context context) {
+    //https://stackoverflow.com/questions/39151453/in-android-7-api-level-24-my-app-is-not-allowed-to-mute-phone-set-ringer-mode
+    NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted()) {
+      getDoNotDisturbPermission(context);
+    }
+  }
+
+  private static void getDoNotDisturbPermission(Context context) {
+    //Tell the user why we're bringing up the do not disturb activity
+    AlertDialog.Builder builder1 = new AlertDialog.Builder(context);
+    builder1.setMessage("In order for speech recognition to work well, we need permission to set Do Not Disturb. Proceed?");
+    builder1.setCancelable(true);
+
+    builder1.setPositiveButton(
+            "Yes",
+            new DialogInterface.OnClickListener() {
+              public void onClick(DialogInterface dialog, int id) {
+                Intent intent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+                context.startActivity(intent);
+                dialog.cancel();
+              }
+            });
+
+    builder1.setNegativeButton(
+            "No",
+            new DialogInterface.OnClickListener() {
+              public void onClick(DialogInterface dialog, int id) {
+                dialog.cancel();
+              }
+            });
+
+    AlertDialog alert11 = builder1.create();
+    alert11.show();
   }
 
   private static class FlutterSoundMethodHandler implements MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, AudioInterface, RecognitionListener {
@@ -254,6 +298,7 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
     public void terminate() {
       if (context == null || cachedVolumes.size() == 0)
         return;
+
       //restore the audio settings when this goes away
       AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
       if (audio == null) return;
@@ -838,13 +883,19 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
     private void muteAudio(boolean shouldMute) {
       AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
       if (shouldMute) {
+        //If we don't have Do Not Disturb permission, we can't totally mute audio
+        int muteVolume = 0;
+        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted())
+          muteVolume = 1;
+
         for (Integer stream : cachedVolumes.keySet()) {
           int tmpVolume = audio.getStreamVolume(stream);
-          if (tmpVolume != 0)
+          if (tmpVolume != muteVolume)
             cachedVolumes.put(stream, tmpVolume);
-          if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !audio.isStreamMute(stream)) || tmpVolume > 0) {
+          if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !audio.isStreamMute(stream)) || tmpVolume > muteVolume) {
             Log.d(LOG_TAG, String.format("Muting %d from %d", stream, audio.getStreamVolume(stream)));
-            audio.setStreamVolume(stream, 0, 0);
+            audio.setStreamVolume(stream, muteVolume, 0);
           }
         }
       } else {
