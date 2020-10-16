@@ -88,7 +88,6 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
       MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_sound");
       _plugin = new FlutterSoundMethodHandler(registrar.activeContext(), channel);
       _plugin.init();
-      checkDoNotDisturb(registrar.activeContext());
       channel.setMethodCallHandler(_plugin);
       _reg = registrar;
     }
@@ -101,7 +100,6 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
       _plugin = new FlutterSoundMethodHandler(binding.getApplicationContext(), channel);
       _plugin.init();
       _context = binding.getApplicationContext();
-      checkDoNotDisturb(_context);
       channel.setMethodCallHandler(_plugin);
     }
   }
@@ -131,17 +129,17 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
 
   }
 
-  private static void checkDoNotDisturb(Context context) {
+  private static void checkDoNotDisturb() {
     //https://stackoverflow.com/questions/39151453/in-android-7-api-level-24-my-app-is-not-allowed-to-mute-phone-set-ringer-mode
-    NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    NotificationManager notificationManager = (NotificationManager) _context.getSystemService(Context.NOTIFICATION_SERVICE);
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !notificationManager.isNotificationPolicyAccessGranted()) {
-      getDoNotDisturbPermission(context);
+      getDoNotDisturbPermission();
     }
   }
 
-  private static void getDoNotDisturbPermission(Context context) {
+  private static void getDoNotDisturbPermission() {
     //Tell the user why we're bringing up the do not disturb activity
-    AlertDialog.Builder builder1 = new AlertDialog.Builder(context);
+    AlertDialog.Builder builder1 = new AlertDialog.Builder(_activity);
     builder1.setMessage("In order for speech recognition to work well, we need permission to set Do Not Disturb. Proceed?");
     builder1.setCancelable(true);
 
@@ -149,9 +147,9 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
             "Yes",
             new DialogInterface.OnClickListener() {
               public void onClick(DialogInterface dialog, int id) {
-                Intent intent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
-                context.startActivity(intent);
                 dialog.cancel();
+                Intent intent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+                _activity.startActivity(intent);
               }
             });
 
@@ -308,8 +306,15 @@ public class FlutterSoundPlugin implements FlutterPlugin, ActivityAware {
       }
     }
 
+    boolean checkedPermissions = false;
+
     @Override
     public void onMethodCall(final MethodCall call, final Result result) {
+      if (!checkedPermissions) {
+        FlutterSoundPlugin.checkDoNotDisturb();
+        checkedPermissions = true;
+      }
+
       final String path = call.argument("path");
       switch (call.method) {
         case "isDecoderSupported": {
